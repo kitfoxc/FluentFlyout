@@ -23,6 +23,7 @@ public sealed class ObsWebServer : IAsyncDisposable
     public const int DefaultPort = 17832;
 
     private readonly MediaStateStore _stateStore;
+    private readonly CoverArtStore _coverArtStore;
     private readonly WebSocketHub _hub = new();
     private readonly string _webRoot;
     private readonly string _token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -34,9 +35,10 @@ public sealed class ObsWebServer : IAsyncDisposable
     private WebApplication? _app;
     private bool _started;
 
-    public ObsWebServer(MediaStateStore stateStore, int port = DefaultPort)
+    public ObsWebServer(MediaStateStore stateStore, CoverArtStore coverArtStore, int port = DefaultPort)
     {
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
+        _coverArtStore = coverArtStore ?? throw new ArgumentNullException(nameof(coverArtStore));
         if (port is < 1024 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(port));
 
@@ -112,6 +114,17 @@ public sealed class ObsWebServer : IAsyncDisposable
                 return Results.Unauthorized();
 
             return Results.Json(CreateEnvelope("state.snapshot", _stateStore.Current), _jsonOptions);
+        });
+
+        app.MapGet("/api/covers/{coverId}", (HttpContext context, string coverId) =>
+        {
+            if (!HasValidToken(context))
+                return Results.Unauthorized();
+
+            if (!_coverArtStore.TryGet(coverId, out var imageBytes) || imageBytes is null)
+                return Results.NotFound();
+
+            return Results.File(imageBytes, "image/png");
         });
 
         app.Map("/ws", HandleWebSocketAsync);
