@@ -14,6 +14,8 @@ namespace FluentFlyoutWPF.Classes.OBS.Server;
 /// </summary>
 public sealed class WebSocketHub
 {
+    private const int MaximumQueuedControlMessages = 32;
+    private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(5);
     private readonly ConcurrentDictionary<Guid, ClientConnection> _clients = new();
 
     public int ClientCount => _clients.Count;
@@ -33,9 +35,17 @@ public sealed class WebSocketHub
         _clients.TryRemove(id, out _);
     }
 
+    /// <summary>Aborts and removes every connected client, typically during shutdown.</summary>
+    public void AbortAll()
+    {
+        foreach (var id in _clients.Keys)
+            RemoveFailedClient(id);
+    }
+
     /// <summary>Queues a reliable control message for every connected client.</summary>
     public Task BroadcastAsync(string message, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         foreach (var client in _clients.Values)
             client.EnqueueControl(message);
 
@@ -92,14 +102,28 @@ public sealed class WebSocketHub
         public void EnqueueControl(string message)
         {
             var startSender = false;
+            var overflow = false;
             lock (_sync)
             {
-                _controlMessages.Enqueue(message);
-                if (!_sending)
+                if (_controlMessages.Count >= MaximumQueuedControlMessages)
                 {
-                    _sending = true;
-                    startSender = true;
+                    overflow = true;
                 }
+                else
+                {
+                    _controlMessages.Enqueue(message);
+                    if (!_sending)
+                    {
+                        _sending = true;
+                        startSender = true;
+                    }
+                }
+            }
+
+            if (overflow)
+            {
+                _onFailure();
+                return;
             }
 
             if (startSender)
@@ -159,14 +183,16 @@ public sealed class WebSocketHub
                     }
 
                     var bytes = Encoding.UTF8.GetBytes(message);
+                    using var timeout = new CancellationTokenSource(SendTimeout);
                     await _socket.SendAsync(
                         new ArraySegment<byte>(bytes),
                         WebSocketMessageType.Text,
                         endOfMessage: true,
-                        CancellationToken.None).ConfigureAwait(false);
+                        timeout.Token).ConfigureAwait(false);
                 }
                 catch
                 {
+                    // Includes send timeout, cancellation and abrupt disconnect.
                     _onFailure();
                     return;
                 }

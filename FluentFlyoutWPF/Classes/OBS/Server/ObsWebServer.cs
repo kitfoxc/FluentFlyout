@@ -37,10 +37,11 @@ public sealed class ObsWebServer : IAsyncDisposable
     };
 
     private WebApplication? _app;
-    private bool _started;
+    private volatile bool _started;
     private readonly object _mediaPushSync = new();
     private NowPlayingInfo? _pendingMediaState;
     private bool _mediaPushScheduled;
+    private CancellationTokenSource? _mediaPushCts;
     private static readonly TimeSpan MediaPushInterval = TimeSpan.FromMilliseconds(100);
 
     public ObsWebServer(
@@ -216,18 +217,35 @@ public sealed class ObsWebServer : IAsyncDisposable
         if (_app is null)
             return;
 
-        _stateStore.Changed -= OnMediaStateChanged;
-        lock (_mediaPushSync)
-        {
-            _pendingMediaState = null;
-            _mediaPushScheduled = false;
-        }
         var app = _app;
         _app = null;
         _started = false;
+        _stateStore.Changed -= OnMediaStateChanged;
 
-        await app.StopAsync(cancellationToken).ConfigureAwait(false);
-        await app.DisposeAsync().ConfigureAwait(false);
+        CancellationTokenSource? pendingFlush;
+        lock (_mediaPushSync)
+        {
+            pendingFlush = _mediaPushCts;
+            _mediaPushCts = null;
+            _pendingMediaState = null;
+            _mediaPushScheduled = false;
+        }
+        pendingFlush?.Cancel();
+
+        // Close active Browser Source sockets before stopping Kestrel so no
+        // per-client sender can remain blocked after the listener is gone.
+        _hub.AbortAll();
+
+        try
+        {
+            await app.StopAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Dispose even when StopAsync throws; otherwise the old host can
+            // retain listeners and make a later restart fail.
+            await app.DisposeAsync().ConfigureAwait(false);
+        }
 
         NLog.LogManager.GetCurrentClassLogger().Info("OBS Now Playing server stopped");
     }
@@ -249,33 +267,38 @@ public sealed class ObsWebServer : IAsyncDisposable
         // Timeline callbacks can arrive in bursts. Keep only the newest state
         // during the short coalescing window so OBS never receives a backlog
         // of obsolete positions.
-        var startFlush = false;
+        CancellationTokenSource? flushCts = null;
         lock (_mediaPushSync)
         {
             _pendingMediaState = state;
             if (!_mediaPushScheduled)
             {
                 _mediaPushScheduled = true;
-                startFlush = true;
+                flushCts = new CancellationTokenSource();
+                _mediaPushCts = flushCts;
             }
         }
 
-        if (startFlush)
-            _ = FlushPendingMediaStateAsync();
+        if (flushCts is not null)
+            _ = FlushPendingMediaStateAsync(flushCts);
     }
 
-    private async Task FlushPendingMediaStateAsync()
+    private async Task FlushPendingMediaStateAsync(CancellationTokenSource flushCts)
     {
         try
         {
-            await Task.Delay(MediaPushInterval).ConfigureAwait(false);
+            await Task.Delay(MediaPushInterval, flushCts.Token).ConfigureAwait(false);
 
             NowPlayingInfo? latestState;
             lock (_mediaPushSync)
             {
+                if (!ReferenceEquals(_mediaPushCts, flushCts))
+                    return;
+
                 latestState = _pendingMediaState;
                 _pendingMediaState = null;
                 _mediaPushScheduled = false;
+                _mediaPushCts = null;
             }
 
             if (latestState is null || !_started)
@@ -287,13 +310,27 @@ public sealed class ObsWebServer : IAsyncDisposable
 
             _hub.BroadcastLatestMedia(message);
         }
+        catch (OperationCanceledException)
+        {
+            // Expected when the server stops or is reconfigured.
+        }
         catch (Exception ex)
         {
             NLog.LogManager.GetCurrentClassLogger()
                 .Error(ex, "Failed to publish coalesced OBS media state");
-
+        }
+        finally
+        {
             lock (_mediaPushSync)
-                _mediaPushScheduled = false;
+            {
+                if (ReferenceEquals(_mediaPushCts, flushCts))
+                {
+                    _mediaPushCts = null;
+                    _pendingMediaState = null;
+                    _mediaPushScheduled = false;
+                }
+            }
+            flushCts.Dispose();
         }
     }
 

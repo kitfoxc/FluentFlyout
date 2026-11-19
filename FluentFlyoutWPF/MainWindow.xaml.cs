@@ -45,6 +45,7 @@ public partial class MainWindow : MicaWindow
     private WebThemeManager? _webThemeManager;
     private readonly SemaphoreSlim _obsServerGate = new(1, 1);
     private ObsWebServer? _obsWebServer;
+    private int _cleanupStarted;
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -92,7 +93,7 @@ public partial class MainWindow : MicaWindow
     private readonly DispatcherTimer _displayRefreshTimer;
     private string _pendingDisplayRefreshReason = "Unknown";
     private bool _displayRefreshInProgress;
-    private bool _isCleaningUp;
+    private volatile bool _isCleaningUp;
 
     internal static volatile bool ExplorerRestarting = false;
 
@@ -1738,14 +1739,14 @@ public partial class MainWindow : MicaWindow
 
     private async Task ApplyObsServerSettingsAsync()
     {
-        await _obsServerGate.WaitAsync();
+        await _obsServerGate.WaitAsync().ConfigureAwait(false);
         try
         {
             if (_obsWebServer == null || _isCleaningUp)
                 return;
 
             if (_obsWebServer.IsRunning)
-                await _obsWebServer.StopAsync();
+                await _obsWebServer.StopAsync().ConfigureAwait(false);
 
             if (!SettingsManager.Current.ObsNowPlayingEnabled)
             {
@@ -1756,7 +1757,7 @@ public partial class MainWindow : MicaWindow
             if (_obsWebServer.Port != SettingsManager.Current.ObsNowPlayingPort)
                 _obsWebServer.ReconfigurePort(SettingsManager.Current.ObsNowPlayingPort);
 
-            await _obsWebServer.StartAsync();
+            await _obsWebServer.StartAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1783,9 +1784,13 @@ public partial class MainWindow : MicaWindow
         //}
 
         // should be handled automatically on app exit but just in case
+        if (Interlocked.Exchange(ref _cleanupStarted, 1) != 0)
+            return;
+
         try
         {
             _isCleaningUp = true;
+            _obsServerGate.Wait();
             try
             {
                 _obsWebServer?.StopAsync().GetAwaiter().GetResult();
@@ -1793,6 +1798,10 @@ public partial class MainWindow : MicaWindow
             catch (Exception ex)
             {
                 Logger.Warn(ex, "Failed to stop WebSocket server cleanly");
+            }
+            finally
+            {
+                _obsServerGate.Release();
             }
 
             _displayRefreshTimer.Stop();
