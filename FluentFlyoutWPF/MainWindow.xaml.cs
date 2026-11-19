@@ -42,7 +42,7 @@ public partial class MainWindow : MicaWindow
 
     private readonly MediaStateStore _mediaStateStore = new();
     private readonly CoverArtStore _coverArtStore = new();
-    private readonly ObsWebServer _obsWebServer = new(_mediaStateStore, _coverArtStore);
+    private readonly ObsWebServer _obsWebServer;
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -96,6 +96,7 @@ public partial class MainWindow : MicaWindow
 
     public MainWindow()
     {
+        _obsWebServer = new ObsWebServer(_mediaStateStore, _coverArtStore);
         DataContext = SettingsManager.Current;
         WindowHelper.SetNoActivate(this); // prevents some fullscreen apps from minimizing
         InitializeComponent();
