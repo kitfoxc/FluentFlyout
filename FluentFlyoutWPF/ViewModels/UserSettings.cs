@@ -759,6 +759,10 @@ public partial class UserSettings : ObservableObject
     [ObservableProperty]
     public partial int ObsNowPlayingPort { get; set; }
 
+    /// <summary>Optional SMTC session ID pinned exclusively for OBS output.</summary>
+    [ObservableProperty]
+    public partial string ObsPinnedSessionId { get; set; }
+
     [XmlIgnore]
     private bool _initializing = true;
 
@@ -858,6 +862,7 @@ public partial class UserSettings : ObservableObject
         AnonymousTelemetryAllowed = true;
         ObsNowPlayingEnabled = true;
         ObsNowPlayingPort = 17832;
+        ObsPinnedSessionId = string.Empty;
         AllowedApps = [];
         BlockedApps = [];
 
