@@ -67,7 +67,7 @@
 
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                 <ui:Button Content="Refresh themes" Icon="{ui:SymbolIcon ArrowSync24}" Click="RefreshThemes_Click" Margin="0,0,8,0" />
-                <ui:Button Content="Open theme folder" Icon="{ui:SymbolIcon FolderOpen24}" Appearance="Secondary" Click="OpenThemeFolder_Click" />
+                <ui:Button Content="Open theme folder" Icon="{ui:SymbolIcon FolderOpen24}" Click="OpenThemeFolder_Click" />
             </StackPanel>
 
             <TextBlock x:Name="ThemeFolderText" FontSize="11" Opacity="0.6" Margin="4,8,0,16" TextWrapping="Wrap" />
@@ -77,7 +77,7 @@
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="Browser Source URL" FontSize="14" />
-                        <TextBlock x:Name="BrowserSourceUrlText" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+                        <TextBlock x:Name="BrowserSourceUrlText" Text="{Binding ObsNowPlayingPort, StringFormat='http://127.0.0.1:{0}/'}" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:Button Content="Copy URL" Icon="{ui:SymbolIcon Copy24}" Click="CopyUrl_Click" />
