@@ -43,6 +43,7 @@ Each WebSocket message has this shape:
     "playbackStatus": "Playing",
     "position": 82.5,
     "duration": 200,
+    "timelineLastUpdatedTime": "2026-11-19T19:30:00Z",
     "coverId": "a1b2c3d4",
     "coverUrl": "/api/covers/a1b2c3d4"
   }
@@ -60,16 +61,44 @@ pending media frames are replaced instead of forming a send backlog. Control
 messages such as `theme.changed` remain ordered and are not replaced by media
 updates.
 
-The built-in page keeps a continuous local playhead between snapshots. Small
-position differences are applied gradually; large discontinuities are treated
-as explicit seeks or timeline resets. This prevents each WebSocket update from
-restarting the progress animation and makes transient SMTC position jitter less
-visible. The shared `FluentFlyout.onMediaChanged(callback)` API remains
-Protocol 1.0 compatible.
+The optional `timelineLastUpdatedTime` field carries the SMTC sample timestamp.
+It is metadata only: FluentFlyout's original SMTC position calculation and
+native media seek bar are unchanged.
 
-The page is transparent outside the Fluent-inspired media card. It hides when
-no SMTC session is available and reconnects automatically after service or
-Browser Source restarts.
+The built-in page uses a small progress synchronization state machine:
+
+- `Waiting/Calibrating`: on track start or resume, hold the playhead until at
+  least three fresh samples show forward movement over a minimum observation
+  window. The page does not extrapolate during this phase.
+- `Running`: interpolate locally with a monotonic browser clock and apply
+  small corrections gradually.
+- `Stalled`: if the timeline stops advancing or its sample timestamp becomes
+  stale, freeze the playhead. Require consecutive advancing samples before
+  resuming; short forward recovery gaps are eased rather than snapped.
+- `Paused`: keep a static playhead and start an idle timer.
+
+A large discontinuity during normal playback remains responsive as a seek.
+A forward discontinuity after a detected stall is treated as a likely buffer
+recovery and eased over a short interval. SMTC does not expose a universal
+buffering flag, so stall detection is heuristic and may need tuning for
+individual media sources.
+
+For resource hygiene, the built-in page runs no animation frame while waiting,
+stalled, paused, or asleep. It enters sleep immediately when no media is
+available or playback is stopped/closed, and after five minutes of continuous
+pause. Sleep hides and detaches the widget, releases album-art image resources,
+and clears idle timers. The WebSocket listener remains connected so a new track
+or resumed playback can wake the page immediately. The single media callback
+is retained intentionally; no per-message listeners or animation loops are
+created.
+
+The shared `FluentFlyout.onMediaChanged(callback)` API remains Protocol 1.0
+compatible; `timelineLastUpdatedTime` is an additive optional field.
+
+The page is transparent outside the Fluent-inspired media card. It sleeps when
+no SMTC media is available or playback is stopped, and after five minutes of
+continuous pause. It reconnects automatically after service or Browser Source
+restarts.
 
 ## Runtime note
 
@@ -133,7 +162,7 @@ A custom HTML file should include the shared browser API:
 ```
 
 The callback receives a media snapshot with fields such as `title`, `artist`,
-`album`, `playerName`, `playbackStatus`, `position`, `duration`, and
+`album`, `playerName`, `playbackStatus`, `position`, `duration`, `timelineLastUpdatedTime`, and
 `coverUrl`. The cover URL already includes the short-lived-in-process local
 service token. `FluentFlyout.onMediaChanged(callback)` immediately invokes
 the callback with the latest state when available and returns an unsubscribe
