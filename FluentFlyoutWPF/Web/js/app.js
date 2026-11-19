@@ -334,6 +334,7 @@ function processCalibrationSample(position, now, media) {
   }
 
   if (now - calibrationStartedAt >= CALIBRATION_TIMEOUT_MS) {
+    resetAnchor(position, now);
     syncMode = SYNC.STALLED;
     recoverySamples = [];
     renderPosition(position);
