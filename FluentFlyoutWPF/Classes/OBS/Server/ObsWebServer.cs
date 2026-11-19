@@ -187,7 +187,7 @@ public sealed class ObsWebServer : IAsyncDisposable
 
     private bool IsAllowedOrigin(HttpContext context)
     {
-        var origin = context.Request.Headers.Origin.ToString();
+        var origin = context.Request.Headers["Origin"].ToString();
         if (string.IsNullOrWhiteSpace(origin))
             return true; // Non-browser local clients still require the token on data routes.
 
@@ -202,7 +202,7 @@ public sealed class ObsWebServer : IAsyncDisposable
     {
         var supplied = context.Request.Query["token"].ToString();
         if (string.IsNullOrEmpty(supplied))
-            supplied = context.Request.Headers.Authorization.ToString()
+            supplied = context.Request.Headers["Authorization"].ToString()
                 .Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase);
 
         return !string.IsNullOrEmpty(supplied)
