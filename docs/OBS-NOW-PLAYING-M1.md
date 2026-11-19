@@ -12,16 +12,18 @@ the existing SMTC event handlers out of `MainWindow`.
   pinned-session → focused-session → first-valid-session behavior while
   allowing the existing `MainWindow.IsSessionAllowed` predicate to be reused.
 
-## Integration plan
+## Current integration
 
-The next integration change should instantiate one `MediaStateStore` and one
-`MediaSessionSelector` for the lifetime of `MainWindow`. The current media
-manager remains the single SMTC owner. Existing UI-specific side effects
-(Next Up, Taskbar Widget, Flyout and seek bar) remain in `MainWindow`; the
-SMTC callbacks additionally publish a normalized snapshot to the store.
+`MainWindow` owns one `MediaStateStore` and publishes normalized snapshots
+from the existing SMTC media-property, playback-state, timeline, and
+session-closed callbacks. The existing media manager remains the sole SMTC
+owner. Existing UI-specific side effects (Next Up, Taskbar Widget, Flyout and
+seek bar) remain in `MainWindow`.
 
-The OBS server will subscribe to `MediaStateStore.Changed` and send
-`MediaStateStore.Current` to newly connected Browser Sources.
+`MediaSessionSelector` is available as an isolated selection helper; the
+current active-session selection path has deliberately not been replaced yet.
+The OBS transport can consume `MediaStateStore.Current` for initial state and
+subscribe to `MediaStateStore.Changed` for subsequent updates.
 
 ## Deliberate non-goals for M1
 
