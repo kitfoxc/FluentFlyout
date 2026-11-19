@@ -23,68 +23,6 @@ public partial class SystemPage : Page
         InitializeComponent();
         DataContext = SettingsManager.Current;
         UpdateMonitorList();
-        PopulateObsMediaSourceComboBox();
-    }
-
-    private bool _updatingObsMediaSources;
-
-    private void PopulateObsMediaSourceComboBox()
-    {
-        if (Application.Current.MainWindow is not MainWindow mainWindow)
-            return;
-
-        _updatingObsMediaSources = true;
-        try
-        {
-            ObsMediaSourceComboBox.Items.Clear();
-            ObsMediaSourceComboBox.Items.Add(new ComboBoxItem
-            {
-                Content = "Automatic (follow FluentFlyout)",
-                Tag = string.Empty
-            });
-
-            foreach (var session in mainWindow.GetSwitchableSessions())
-            {
-                string sessionId = session.Id ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(sessionId))
-                    continue;
-
-                string appName = MediaPlayerData.GetAndCacheMediaPlayerData(sessionId).Item1
-                    ?? sessionId;
-
-                ObsMediaSourceComboBox.Items.Add(new ComboBoxItem
-                {
-                    Content = appName,
-                    Tag = sessionId,
-                    ToolTip = sessionId
-                });
-            }
-
-            string selectedId = SettingsManager.Current.ObsPinnedSessionId;
-            ObsMediaSourceComboBox.SelectedItem = ObsMediaSourceComboBox.Items
-                .OfType<ComboBoxItem>()
-                .FirstOrDefault(item => string.Equals(
-                    item.Tag as string,
-                    selectedId,
-                    StringComparison.Ordinal));
-            ObsMediaSourceComboBox.SelectedIndex = Math.Max(0, ObsMediaSourceComboBox.SelectedIndex);
-        }
-        finally
-        {
-            _updatingObsMediaSources = false;
-        }
-    }
-
-    private void ObsMediaSourceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_updatingObsMediaSources ||
-            ObsMediaSourceComboBox.SelectedItem is not ComboBoxItem item ||
-            item.Tag is not string sessionId)
-            return;
-
-        SettingsManager.Current.ObsPinnedSessionId = sessionId;
-        if (Application.Current.MainWindow is MainWindow mainWindow)
-            mainWindow.RefreshObsMediaSource();
     }
 
     private void StartupSwitch_Click(object sender, RoutedEventArgs e)
