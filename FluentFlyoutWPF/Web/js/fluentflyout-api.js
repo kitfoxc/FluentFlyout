@@ -3,6 +3,7 @@
   const listeners = new Set();
   let socket = null;
   let currentState = null;
+  let currentSequence = -1;
   let connected = false;
   let reconnectDelay = 1000;
 
@@ -38,6 +39,14 @@
             return;
           }
           if (!message.data || !["state.snapshot", "media.changed"].includes(message.type)) return;
+
+          const sequence = Number(message.sequence ?? message.data.sequence ?? -1);
+          // Ignore delayed or duplicated frames. The server coalesces pending
+          // media updates, but this also protects themes across reconnect races.
+          if (Number.isFinite(sequence) && sequence >= 0 && sequence <= currentSequence)
+            return;
+          if (Number.isFinite(sequence) && sequence >= 0)
+            currentSequence = sequence;
 
           const media = { ...message.data };
           if (media.coverUrl) {
