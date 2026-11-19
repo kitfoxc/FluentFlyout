@@ -130,7 +130,7 @@ public sealed class ObsWebServer : IAsyncDisposable
         app.MapGet("/api/health", () => Results.Json(new
         {
             status = "ok",
-            service = "FluentFlyout OBS Now Playing",
+            service = "FluentFlyout WebSocket",
             protocol = "1.0",
             clients = _hub.ClientCount
         }));
