@@ -93,20 +93,14 @@ public partial class WebSocketPage : Page
             var themes = _themeManager.GetAvailableThemes();
 
             ThemeComboBox.Items.Clear();
-            foreach (var theme in themes)
+            foreach (var themeFolderName in themes)
             {
-                var themeFolder = Path.GetDirectoryName(theme.Replace('/', Path.DirectorySeparatorChar));
-                var folderLabel = string.IsNullOrWhiteSpace(themeFolder)
-                    ? "Root"
-                    : themeFolder.Replace(Path.DirectorySeparatorChar, '/');
-                var themeLabel = Path.GetFileNameWithoutExtension(theme);
-
                 ThemeComboBox.Items.Add(new ComboBoxItem
                 {
-                    // Show the category path as well as the HTML theme name.
-                    Content = $"{folderLabel} / {themeLabel}",
-                    Tag = theme,
-                    ToolTip = Path.Combine(_themeManager.ThemeDirectory, theme)
+                    // A folder is the theme; keep the selector label concise.
+                    Content = themeFolderName,
+                    Tag = themeFolderName,
+                    ToolTip = Path.Combine(_themeManager.ThemeDirectory, themeFolderName)
                 });
             }
 
@@ -114,7 +108,7 @@ public partial class WebSocketPage : Page
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(
                     item.Tag as string,
-                    selected,
+                    string.Equals(selected, "default.html", StringComparison.OrdinalIgnoreCase) ? "default" : selected,
                     StringComparison.OrdinalIgnoreCase));
 
             if (ThemeComboBox.SelectedIndex < 0 && ThemeComboBox.Items.Count > 0)
@@ -130,10 +124,10 @@ public partial class WebSocketPage : Page
     {
         if (_updatingThemes ||
             ThemeComboBox.SelectedItem is not ComboBoxItem item ||
-            item.Tag is not string fileName)
+            item.Tag is not string themeFolderName)
             return;
 
-        SettingsManager.Current.WebSocketThemeFileName = fileName;
+        SettingsManager.Current.WebSocketThemeFileName = themeFolderName;
         if (Application.Current.MainWindow is MainWindow mainWindow)
             mainWindow.RefreshWebSocketTheme();
     }
