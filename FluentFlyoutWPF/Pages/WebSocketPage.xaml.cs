@@ -112,7 +112,19 @@ public partial class WebSocketPage : Page
                     StringComparison.OrdinalIgnoreCase));
 
             if (ThemeComboBox.SelectedIndex < 0 && ThemeComboBox.Items.Count > 0)
-                ThemeComboBox.SelectedIndex = 0;
+            {
+                ThemeComboBox.SelectedItem = ThemeComboBox.Items
+                    .OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => string.Equals(
+                        item.Tag as string,
+                        "default",
+                        StringComparison.OrdinalIgnoreCase))
+                    ?? ThemeComboBox.Items[0];
+
+                // Normalize selections saved by the previous file-based theme picker.
+                SettingsManager.Current.WebSocketThemeFileName =
+                    (ThemeComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "default";
+            }
         }
         finally
         {
