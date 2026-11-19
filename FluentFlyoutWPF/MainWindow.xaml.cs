@@ -1685,7 +1685,7 @@ public partial class MainWindow : MicaWindow
 
             if (!SettingsManager.Current.ObsNowPlayingEnabled)
             {
-                Logger.Info("OBS Now Playing server is disabled in settings");
+                Logger.Info("WebSocket server is disabled in settings");
                 return;
             }
 
@@ -1696,7 +1696,7 @@ public partial class MainWindow : MicaWindow
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to apply OBS Now Playing server settings");
+            Logger.Error(ex, "Failed to apply WebSocket server settings");
         }
         finally
         {
@@ -1728,7 +1728,7 @@ public partial class MainWindow : MicaWindow
             }
             catch (Exception ex)
             {
-                Logger.Warn(ex, "Failed to stop OBS Now Playing server cleanly");
+                Logger.Warn(ex, "Failed to stop WebSocket server cleanly");
             }
 
             _displayRefreshTimer.Stop();
