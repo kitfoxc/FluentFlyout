@@ -95,11 +95,18 @@ public partial class WebSocketPage : Page
             ThemeComboBox.Items.Clear();
             foreach (var theme in themes)
             {
+                var themeFolder = Path.GetDirectoryName(theme.Replace('/', Path.DirectorySeparatorChar));
+                var folderLabel = string.IsNullOrWhiteSpace(themeFolder)
+                    ? "Root"
+                    : themeFolder.Replace(Path.DirectorySeparatorChar, '/');
+                var themeLabel = Path.GetFileNameWithoutExtension(theme);
+
                 ThemeComboBox.Items.Add(new ComboBoxItem
                 {
-                    Content = Path.GetFileNameWithoutExtension(theme),
+                    // Show the category path as well as the HTML theme name.
+                    Content = $"{folderLabel} / {themeLabel}",
                     Tag = theme,
-                    ToolTip = theme
+                    ToolTip = Path.Combine(_themeManager.ThemeDirectory, theme)
                 });
             }
 
