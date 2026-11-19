@@ -66,3 +66,42 @@ framework available. Before distributing a framework-dependent build, ensure
 the ASP.NET Core 10 Runtime is installed alongside the .NET Desktop Runtime,
 or configure the release packaging as self-contained. This packaging decision
 is tracked for the next milestone.
+
+
+## WebSocket HTML themes
+
+FluentFlyout creates the user theme directory on first launch:
+
+`%APPDATA%\\FluentFlyout\\web-theme`
+
+The built-in `index.html` is copied there as `default.html`. Put additional
+self-contained `.html` files directly in this directory, then open the
+**WebSocket** page in Settings and choose **Refresh themes**. Select a template
+to apply it; connected OBS Browser Sources are notified and reload automatically.
+
+A custom HTML file should include the shared browser API:
+
+```html
+<script src="/js/fluentflyout-api.js"></script>
+<script>
+  FluentFlyout.onMediaChanged(media => {
+    document.querySelector("#title").textContent = media.title || "";
+    document.querySelector("#artist").textContent = media.artist || "";
+    document.querySelector("#cover").src = media.coverUrl || "";
+  });
+</script>
+```
+
+The callback receives a media snapshot with fields such as `title`, `artist`,
+`album`, `playerName`, `playbackStatus`, `position`, `duration`, and
+`coverUrl`. The cover URL already includes the short-lived-in-process local
+service token. `FluentFlyout.onMediaChanged(callback)` immediately invokes
+the callback with the latest state when available and returns an unsubscribe
+function. `FluentFlyout.getState()` returns the latest snapshot, and
+`FluentFlyout.isConnected()` reports WebSocket connectivity.
+
+Templates are self-contained HTML documents in this initial implementation.
+Inline CSS and JavaScript are supported. Treat imported templates as trusted
+local code: HTML scripts execute in OBS's browser context. Only top-level
+`.html` files are discovered; nested folders and external theme assets are
+not currently part of the MVP.
