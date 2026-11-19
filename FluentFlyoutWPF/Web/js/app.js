@@ -59,7 +59,9 @@ function getInterpolatedPosition(now = performance.now()) {
     position += correctionAmount * easedProgress;
 
     if (progress >= 1) {
-      positionAnchor += correctionAmount;
+      // Fold both elapsed playback time and the completed correction into the
+      // new anchor; retaining only the correction would move the playhead back.
+      positionAnchor = position;
       positionAnchorAt = now;
       correctionAmount = 0;
     }
