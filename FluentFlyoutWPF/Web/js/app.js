@@ -75,7 +75,9 @@ function getTrackKey(media) {
 
 function getTimelineAgeMs(media) {
   const timestamp = Date.parse(media?.timelineLastUpdatedTime || "");
-  if (!Number.isFinite(timestamp)) return null;
+  // Some SMTC providers leave LastUpdatedTime at DateTimeOffset.MinValue.
+  // Treat that sentinel as unavailable and fall back to event-arrival timing.
+  if (!Number.isFinite(timestamp) || timestamp < Date.UTC(2000, 0, 1)) return null;
   return Date.now() - timestamp;
 }
 
@@ -529,8 +531,11 @@ window.addEventListener("pageshow", () => {
     setCover(state.coverUrl || null);
     if (state.playbackStatus === "Playing")
       beginCalibration(state, performance.now());
-    else
+    else {
       renderPosition(positionAnchor);
+      if (state.playbackStatus === "Paused")
+        schedulePausedSleep();
+    }
   }
 });
 
