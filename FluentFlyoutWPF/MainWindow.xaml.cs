@@ -199,7 +199,7 @@ public partial class MainWindow : MicaWindow
         mediaManager.OnAnySessionClosed += MediaManager_OnAnySessionClosed;
 
         // Publish the current session before the first Browser Source connects.
-        PublishMediaState(GetActiveMediaSession());
+        PublishObsMediaState();
         _ = StartObsWebServerAsync();
 
         InitializeHeadsetControls();
@@ -786,8 +786,27 @@ public partial class MainWindow : MicaWindow
         }
     }
 
-    private void PublishMediaState(MediaSession? session)
+    private MediaSession? GetObsMediaSession()
     {
+        var sessions = mediaManager.CurrentMediaSessions.Values
+            .Where(IsSessionAllowed)
+            .ToList();
+
+        if (sessions.Count == 0)
+            return null;
+
+        var selector = new MediaSessionSelector();
+        return selector.Select(
+            sessions,
+            GetActiveMediaSession(),
+            SettingsManager.Current.ObsPinnedSessionId,
+            session => session.Id,
+            IsSessionAllowed);
+    }
+
+    private void PublishObsMediaState()
+    {
+        var session = GetObsMediaSession();
         if (session == null)
         {
             _mediaStateStore.Clear();
@@ -837,6 +856,9 @@ public partial class MainWindow : MicaWindow
 #endif     
         pauseOtherMediaSessionsIfNeeded(mediaSession);
 
+        // OBS follows its own source selection, independently of the desktop flyout.
+        PublishObsMediaState();
+
         var focusedSession = GetActiveMediaSession();
         if (focusedSession == null)
         {
@@ -845,7 +867,7 @@ public partial class MainWindow : MicaWindow
             return;
         }
 
-        PublishMediaState(focusedSession);
+        PublishObsMediaState();
 
         var tbSongInfo = TryGetMediaProperties(focusedSession.ControlSession);
         if (tbSongInfo != null)
@@ -876,6 +898,9 @@ public partial class MainWindow : MicaWindow
 #if DEBUG
         Logger.Debug("Media property changed: " + mediaProperties.Title + " " + mediaSession.ControlSession.GetPlaybackInfo().PlaybackStatus);
 #endif
+        // Any SMTC session may be the OBS-pinned source.
+        PublishObsMediaState();
+
         var currentActiveSession = GetActiveMediaSession();
         if (currentActiveSession == null)
         {
@@ -888,7 +913,7 @@ public partial class MainWindow : MicaWindow
             return;
 
         var playbackInfo = currentActiveSession.ControlSession.GetPlaybackInfo();
-        PublishMediaState(currentActiveSession);
+        PublishObsMediaState();
 
         string check = songInfo.Title + songInfo.Artist + playbackInfo.PlaybackStatus;
         int checkThumbnail = BitmapHelper.GetStableThumbnailHash(songInfo.Thumbnail);
@@ -963,9 +988,9 @@ public partial class MainWindow : MicaWindow
 
     private void MediaManager_OnAnyTimelinePropertyChanged(MediaSession mediaSession, GlobalSystemMediaTransportControlsSessionTimelineProperties timelineProperties)
     {
-        if (GetActiveMediaSession() is not { } session || session.Id != mediaSession.Id) return;
+        PublishObsMediaState();
 
-        PublishMediaState(session);
+        if (GetActiveMediaSession() is not { } session || session.Id != mediaSession.Id) return;
 
         if (_seekBarEnabled)
         {
@@ -990,8 +1015,11 @@ public partial class MainWindow : MicaWindow
         {
             SettingsManager.Current.PinnedSessionId = string.Empty;
         }
+        if (SettingsManager.Current.ObsPinnedSessionId == mediaSession.Id)
+            SettingsManager.Current.ObsPinnedSessionId = string.Empty;
+
         UpdateTaskbar();
-        PublishMediaState(GetActiveMediaSession());
+        PublishObsMediaState();
     }
 
     private static IntPtr SetHook(LowLevelKeyboardProc proc) // set the keyboard hook
