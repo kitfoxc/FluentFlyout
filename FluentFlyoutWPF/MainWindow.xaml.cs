@@ -10,6 +10,7 @@ using FluentFlyoutWPF.Classes;
 using FluentFlyoutWPF.Classes.Services;
 using FluentFlyoutWPF.Classes.OBS.Models;
 using FluentFlyoutWPF.Classes.OBS.Services;
+using FluentFlyoutWPF.Classes.OBS.Server;
 using FluentFlyoutWPF.Classes.Utils;
 using FluentFlyoutWPF.ViewModels;
 using FluentFlyoutWPF.Windows;
@@ -40,6 +41,7 @@ public partial class MainWindow : MicaWindow
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
     private readonly MediaStateStore _mediaStateStore = new();
+    private readonly ObsWebServer _obsWebServer = new(_mediaStateStore);
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -189,6 +191,10 @@ public partial class MainWindow : MicaWindow
         mediaManager.OnAnyPlaybackStateChanged += CurrentSession_OnPlaybackStateChanged;
         mediaManager.OnAnyTimelinePropertyChanged += MediaManager_OnAnyTimelinePropertyChanged;
         mediaManager.OnAnySessionClosed += MediaManager_OnAnySessionClosed;
+
+        // Publish the current session before the first Browser Source connects.
+        PublishMediaState(GetActiveMediaSession());
+        _ = StartObsWebServerAsync();
 
         InitializeHeadsetControls();
 
@@ -1600,6 +1606,18 @@ public partial class MainWindow : MicaWindow
         }
     }
 
+    private async Task StartObsWebServerAsync()
+    {
+        try
+        {
+            await _obsWebServer.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to start OBS Now Playing server");
+        }
+    }
+
     private void CleanupResources()
     {
         // try saving settings before exiting if window is still open
@@ -1618,6 +1636,15 @@ public partial class MainWindow : MicaWindow
         try
         {
             _isCleaningUp = true;
+            try
+            {
+                _obsWebServer.StopAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "Failed to stop OBS Now Playing server cleanly");
+            }
+
             _displayRefreshTimer.Stop();
             _displayRefreshTimer.Tick -= DisplayRefreshTimer_Tick;
 
