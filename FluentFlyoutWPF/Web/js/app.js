@@ -378,6 +378,7 @@ function synchronizePosition(media, now) {
   const currentPosition = getInterpolatedPosition(now);
   const difference = incomingPosition - currentPosition;
   const previousSample = lastPositionSample;
+  const timeSinceLastAdvance = now - lastAdvanceAt;
 
   if (previousSample !== null && incomingPosition > previousSample + 0.04)
     lastAdvanceAt = now;
@@ -388,7 +389,7 @@ function synchronizePosition(media, now) {
   // should remain responsive. Ordinary drift is slewed instead of snapped.
   if (difference >= seekSnapThreshold
       && difference <= RECOVERY_SMOOTH_MAX_SECONDS
-      && now - lastAdvanceAt >= 1000) {
+      && timeSinceLastAdvance >= 1000) {
     // A forward jump after a period without timeline advancement is more
     // likely a buffer recovery than an intentional seek. Ease toward it.
     positionAnchor = currentPosition;
