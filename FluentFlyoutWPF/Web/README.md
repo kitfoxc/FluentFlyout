@@ -51,8 +51,21 @@ Each WebSocket message has this shape:
 
 A complete `state.snapshot` is sent immediately after connection. Subsequent
 SMTC updates are sent as `media.changed`. Sequence numbers increase for each
-published state. The page extrapolates progress locally between Timeline
-updates and re-synchronizes when new state arrives.
+published state, and clients ignore duplicate or older sequence numbers.
+
+Timeline callbacks are coalesced for a short 100 ms window, so a burst publishes
+only its newest snapshot. Each WebSocket client also has a latest-value media
+slot: if a Browser Source is still receiving an older frame, intermediate
+pending media frames are replaced instead of forming a send backlog. Control
+messages such as `theme.changed` remain ordered and are not replaced by media
+updates.
+
+The built-in page keeps a continuous local playhead between snapshots. Small
+position differences are applied gradually; large discontinuities are treated
+as explicit seeks or timeline resets. This prevents each WebSocket update from
+restarting the progress animation and makes transient SMTC position jitter less
+visible. The shared `FluentFlyout.onMediaChanged(callback)` API remains
+Protocol 1.0 compatible.
 
 The page is transparent outside the Fluent-inspired media card. It hides when
 no SMTC session is available and reconnects automatically after service or
