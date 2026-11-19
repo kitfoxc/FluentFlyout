@@ -41,7 +41,8 @@ public partial class MainWindow : MicaWindow
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
     private readonly MediaStateStore _mediaStateStore = new();
-    private readonly ObsWebServer _obsWebServer = new(_mediaStateStore);
+    private readonly CoverArtStore _coverArtStore = new();
+    private readonly ObsWebServer _obsWebServer = new(_mediaStateStore, _coverArtStore);
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -796,6 +797,11 @@ public partial class MainWindow : MicaWindow
         var timeline = session.ControlSession.GetTimelineProperties();
         var duration = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds);
         var playerName = MediaPlayerData.GetAndCacheMediaPlayerData(session.Id).Item1;
+        var thumbnailHash = properties.Thumbnail is null ? 0 : BitmapHelper.GetStableThumbnailHash(properties.Thumbnail);
+        var thumbnail = BitmapHelper.GetThumbnail(properties.Thumbnail);
+        var coverId = thumbnailHash == 0 || thumbnail is null
+            ? null
+            : _coverArtStore.Store($"{thumbnailHash:x8}", thumbnail);
 
         _mediaStateStore.Publish(new NowPlayingInfo
         {
@@ -813,6 +819,8 @@ public partial class MainWindow : MicaWindow
             },
             Position = Math.Max(0, timeline.Position.TotalSeconds),
             Duration = duration,
+            CoverId = coverId,
+            CoverUrl = coverId is null ? null : $"/api/covers/{coverId}",
             IsAvailable = true
         });
     }
