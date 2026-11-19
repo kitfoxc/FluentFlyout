@@ -386,6 +386,21 @@ function synchronizePosition(media, now) {
 
   // A clear backwards seek or a large discontinuity while actively running
   // should remain responsive. Ordinary drift is slewed instead of snapped.
+  if (difference >= seekSnapThreshold
+      && difference <= RECOVERY_SMOOTH_MAX_SECONDS
+      && now - lastAdvanceAt >= 1000) {
+    // A forward jump after a period without timeline advancement is more
+    // likely a buffer recovery than an intentional seek. Ease toward it.
+    positionAnchor = currentPosition;
+    positionAnchorAt = now;
+    correctionAmount = difference;
+    correctionStartedAt = now;
+    correctionDuration = Math.max(900, Math.min(2200, difference * 350));
+    lastAdvanceAt = now;
+    startAnimation();
+    return;
+  }
+
   if (difference < -0.8 || Math.abs(difference) >= seekSnapThreshold) {
     resetAnchor(incomingPosition, now);
     lastAdvanceAt = now;
@@ -436,8 +451,6 @@ function render(media) {
   }
 
   if (media.playbackStatus === "Paused") {
-    clearPauseSleepTimer();
-
     if (trackChanged || previousState?.playbackStatus !== "Paused") {
       currentTrackKey = nextTrackKey;
       syncMode = SYNC.PAUSED;
@@ -508,6 +521,7 @@ window.addEventListener("pagehide", () => {
 });
 window.addEventListener("pageshow", () => {
   if (state && !sleeping) {
+    setCover(state.coverUrl || null);
     if (state.playbackStatus === "Playing")
       beginCalibration(state, performance.now());
     else
