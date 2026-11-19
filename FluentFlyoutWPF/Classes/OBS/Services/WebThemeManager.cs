@@ -145,6 +145,15 @@ public sealed class WebThemeManager
         if (File.Exists(destination))
             return;
 
+        // Preserve a customized legacy root-level default.html when upgrading
+        // from the previous file-based theme layout.
+        var legacyDefault = Path.Combine(ThemeDirectory, "default.html");
+        if (File.Exists(legacyDefault))
+        {
+            File.Copy(legacyDefault, destination);
+            return;
+        }
+
         var source = Path.Combine(_webRoot, "index.html");
         if (!File.Exists(source))
             throw new FileNotFoundException("The built-in WebSocket HTML template was not found.", source);
