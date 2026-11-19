@@ -187,7 +187,7 @@
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding ObsNowPlayingEnabled, Mode=TwoWay}" />
             </ui:CardControl>
-            <ui:CardControl x:Name="ObsMediaSourceCard" Tag="Indexable" Icon="{ui:SymbolIcon MusicNote2_24}" Margin="0,0,0,3">
+            <ui:CardControl x:Name="ObsMediaSourceCard" Tag="Indexable" Icon="{ui:SymbolIcon Globe24}" Margin="0,0,0,3">
                 <ui:CardControl.Header>
                     <StackPanel Orientation="Vertical">
                         <TextBlock Text="OBS media source" FontSize="14" FontWeight="Regular" />
