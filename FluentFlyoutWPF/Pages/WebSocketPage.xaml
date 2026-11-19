@@ -57,8 +57,8 @@
             <ui:CardControl Tag="Indexable" Icon="{ui:SymbolIcon Code24}" Margin="0,0,0,4">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="Selected HTML template" FontSize="14" />
-                        <TextBlock Text="Choose an HTML file from a theme subfolder. The selector shows its folder name." FontSize="12" Opacity="0.55" TextWrapping="Wrap" />
+                        <TextBlock Text="Selected theme folder" FontSize="14" />
+                        <TextBlock Text="Choose a theme folder inside your Roaming web-theme directory. The selector shows its folder name." FontSize="12" Opacity="0.55" TextWrapping="Wrap" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ComboBox x:Name="ThemeComboBox" SelectionChanged="ThemeComboBox_SelectionChanged"
@@ -83,7 +83,7 @@
                 <ui:Button Content="Copy URL" Icon="{ui:SymbolIcon Copy24}" Click="CopyUrl_Click" />
             </ui:CardControl>
 
-            <TextBlock Text="Create a folder for each theme category and place one or more HTML files and their supporting assets inside it. Relative asset paths are resolved from the selected HTML file’s folder. Include /js/fluentflyout-api.js and subscribe with FluentFlyout.onMediaChanged(callback). Only use trusted HTML/JavaScript files."
+            <TextBlock Text="Create one folder per theme. Place its entry HTML file and supporting assets directly inside that folder; nested folders are only for assets. Relative asset paths are resolved from the selected HTML file’s folder. Include /js/fluentflyout-api.js and subscribe with FluentFlyout.onMediaChanged(callback). Only use trusted HTML/JavaScript files."
                        FontSize="12" Opacity="0.6" Margin="4,12,0,36" TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>
