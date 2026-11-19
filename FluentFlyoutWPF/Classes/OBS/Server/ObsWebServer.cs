@@ -48,9 +48,21 @@ public sealed class ObsWebServer : IAsyncDisposable
         _webRoot = Path.Combine(AppContext.BaseDirectory, "Web");
     }
 
-    public int Port { get; }
+    public int Port { get; private set; }
 
-    public string BaseUrl { get; }
+    public string BaseUrl { get; private set; }
+
+    /// <summary>Changes the listening port while the server is stopped.</summary>
+    public void ReconfigurePort(int port)
+    {
+        if (_started)
+            throw new InvalidOperationException("Stop the OBS server before changing its port.");
+        if (port is < 1024 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(port));
+
+        Port = port;
+        BaseUrl = $"http://127.0.0.1:{Port}";
+    }
 
     public bool IsRunning => _started;
 
