@@ -27,6 +27,7 @@
 
       socket.onopen = () => {
         connected = true;
+        currentSequence = -1;
         reconnectDelay = 1000;
       };
 
