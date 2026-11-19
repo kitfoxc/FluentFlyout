@@ -94,14 +94,16 @@ other feature pages in Settings; its controls are no longer embedded in System.
 - User templates live in `%APPDATA%\\FluentFlyout\\web-theme`.
 - On first run, the packaged default HTML page is copied to
   `default.html` in that folder.
-- The WebSocket page scans top-level `.html` files and offers a refresh action.
+- The WebSocket page recursively scans `.html` files in the theme directory and its subfolders, with a refresh action.
 - Selecting a template updates the persisted `WebSocketThemeFileName` setting.
 - The server serves the selected HTML file at the same Browser Source root URL.
 - Connected Browser Sources receive `theme.changed` and reload the page.
 - Custom templates include `/js/fluentflyout-api.js` and use
   `FluentFlyout.onMediaChanged(callback)` to receive media snapshots.
-- Initial implementation supports self-contained HTML files with inline CSS/JS.
-  Supporting companion assets in nested theme folders is intentionally deferred.
+- Themes can be grouped into subfolders, each containing multiple HTML templates.
+  The selector displays the relative folder path alongside each template name.
+- Relative CSS, JavaScript and image references are served from the selected
+  HTML file's containing folder through a path-guarded theme asset endpoint.
 - HTML templates execute JavaScript in OBS Browser Source and must be treated
   as trusted local code.
 
@@ -126,3 +128,16 @@ other feature pages in Settings; its controls are no longer embedded in System.
 </body>
 </html>
 ```
+
+
+## M3.2 — folder-based HTML theme library and Home dashboard entry
+
+- HTML themes are discovered recursively under `%APPDATA%\\FluentFlyout\\web-theme`.
+- The persisted selection is a relative path such as `Minimal/compact.html`.
+- The selector shows the category folder path and template name, e.g.
+  `Minimal / compact`; root-level templates are labelled `Root`.
+- The selected HTML file's containing folder is the asset root. Relative CSS,
+  JavaScript and image references are served through `/theme-assets/`; the
+  endpoint rejects paths that escape the selected folder.
+- The Home dashboard now has a WebSocket card directly before System Settings.
+  It displays the enabled/disabled state and opens the dedicated WebSocket page.
