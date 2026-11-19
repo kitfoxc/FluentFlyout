@@ -38,6 +38,10 @@ public sealed class ObsWebServer : IAsyncDisposable
 
     private WebApplication? _app;
     private bool _started;
+    private readonly object _mediaPushSync = new();
+    private NowPlayingInfo? _pendingMediaState;
+    private bool _mediaPushScheduled;
+    private static readonly TimeSpan MediaPushInterval = TimeSpan.FromMilliseconds(100);
 
     public ObsWebServer(
         MediaStateStore stateStore,
@@ -213,6 +217,11 @@ public sealed class ObsWebServer : IAsyncDisposable
             return;
 
         _stateStore.Changed -= OnMediaStateChanged;
+        lock (_mediaPushSync)
+        {
+            _pendingMediaState = null;
+            _mediaPushScheduled = false;
+        }
         var app = _app;
         _app = null;
         _started = false;
@@ -237,12 +246,55 @@ public sealed class ObsWebServer : IAsyncDisposable
 
     private void OnMediaStateChanged(NowPlayingInfo state)
     {
-        var message = JsonSerializer.Serialize(
-            CreateEnvelope("media.changed", state),
-            _jsonOptions);
+        // Timeline callbacks can arrive in bursts. Keep only the newest state
+        // during the short coalescing window so OBS never receives a backlog
+        // of obsolete positions.
+        var startFlush = false;
+        lock (_mediaPushSync)
+        {
+            _pendingMediaState = state;
+            if (!_mediaPushScheduled)
+            {
+                _mediaPushScheduled = true;
+                startFlush = true;
+            }
+        }
 
-        // WebSocketHub serializes writes; failures are handled per client.
-        _ = _hub.BroadcastAsync(message);
+        if (startFlush)
+            _ = FlushPendingMediaStateAsync();
+    }
+
+    private async Task FlushPendingMediaStateAsync()
+    {
+        try
+        {
+            await Task.Delay(MediaPushInterval).ConfigureAwait(false);
+
+            NowPlayingInfo? latestState;
+            lock (_mediaPushSync)
+            {
+                latestState = _pendingMediaState;
+                _pendingMediaState = null;
+                _mediaPushScheduled = false;
+            }
+
+            if (latestState is null || !_started)
+                return;
+
+            var message = JsonSerializer.Serialize(
+                CreateEnvelope("media.changed", latestState),
+                _jsonOptions);
+
+            _hub.BroadcastLatestMedia(message);
+        }
+        catch (Exception ex)
+        {
+            NLog.LogManager.GetCurrentClassLogger()
+                .Error(ex, "Failed to publish coalesced OBS media state");
+
+            lock (_mediaPushSync)
+                _mediaPushScheduled = false;
+        }
     }
 
     private object CreateEnvelope(string type, NowPlayingInfo state)
@@ -307,7 +359,7 @@ public sealed class ObsWebServer : IAsyncDisposable
             var snapshot = JsonSerializer.Serialize(
                 CreateEnvelope("state.snapshot", _stateStore.Current),
                 _jsonOptions);
-            await _hub.SendAsync(socket, snapshot, context.RequestAborted);
+            _hub.SendLatestMedia(clientId, snapshot);
 
             var buffer = new byte[1024];
             while (socket.State == WebSocketState.Open &&
