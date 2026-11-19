@@ -74,28 +74,38 @@ FluentFlyout creates the user theme directory on first launch:
 
 `%APPDATA%\\FluentFlyout\\web-theme`
 
-The built-in `index.html` is copied there as `default.html`. Organize
-additional themes into subfolders, with one or more HTML files and their
-supporting CSS, JavaScript, and image assets in each folder. For example:
+The built-in `index.html` is copied into the `default` theme folder as
+`index.html`. Every immediate subfolder of `web-theme` represents exactly one
+theme. FluentFlyout does not scan loose files in the root or recursively scan
+nested folders.
 
 ```text
 web-theme/
-├── default.html
+├── default/
+│   └── index.html
 ├── Minimal/
-│   ├── compact.html
-│   ├── wide.html
-│   └── style.css
+│   ├── index.html
+│   ├── style.css
+│   └── cover-frame.png
 └── Neon/
-    ├── neon.html
+    ├── index.html
     ├── theme.css
     └── background.png
 ```
 
-The WebSocket page recursively discovers `.html` files. The selector displays
-the folder path followed by the HTML name (for example, `Minimal / compact`).
-Select a template to apply it; connected OBS Browser Sources are notified and
-reload automatically. Use **Refresh themes** after adding or moving files.
+Put one entry HTML file in each theme folder. The preferred entry filename is
+`index.html`; if it is absent, FluentFlyout uses `default.html`, then the
+first top-level `.html` file in that folder. Supporting CSS, JavaScript and
+images can live beside the HTML or in asset subfolders.
 
+The WebSocket page lists only immediate folder names, such as `default`,
+`Minimal`, and `Neon`. It does not display HTML filenames or nested paths.
+Select a folder to apply its theme; connected OBS Browser Sources reload
+automatically. Use **Refresh themes** after adding or removing a theme folder.
+
+Legacy root-level `default.html` is copied into `default/index.html` during
+upgrade when the new default entry does not already exist. Other loose root
+HTML files are intentionally ignored; move each theme into its own folder.
 A custom HTML file should include the shared browser API:
 
 ```html
@@ -117,6 +127,6 @@ the callback with the latest state when available and returns an unsubscribe
 function. `FluentFlyout.getState()` returns the latest snapshot, and
 `FluentFlyout.isConnected()` reports WebSocket connectivity.
 
-Templates may reference CSS, JavaScript and images using paths relative to the selected HTML file. These requests are served from that HTML file's containing theme folder through the guarded `/theme-assets/` route. Absolute application paths such as `/js/fluentflyout-api.js` continue to work. Theme folder paths cannot be used to access files outside the selected theme folder.
+Templates may reference CSS, JavaScript and images using paths relative to the selected theme folder. These requests are served from that folder through the guarded `/theme-assets/` route. Absolute application paths such as `/js/fluentflyout-api.js` continue to work. Paths cannot be used to access files outside the selected theme folder.
 
-Treat imported templates as trusted local code: HTML scripts execute in OBS's browser context. Only HTML files are selectable; each HTML file's containing folder is its asset root.
+Treat imported templates as trusted local code: HTML scripts execute in OBS's browser context. Only immediate theme folders are selectable; nested folders are asset subfolders, not separate themes.
