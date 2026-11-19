@@ -23,7 +23,6 @@ public partial class WebSocketPage : Page
         PopulateMediaSources();
         RefreshThemeList();
         ThemeFolderText.Text = _themeManager.ThemeDirectory;
-        BrowserSourceUrlText.Text = $"http://127.0.0.1:{SettingsManager.Current.ObsNowPlayingPort}/";
     }
 
     private void PopulateMediaSources()
