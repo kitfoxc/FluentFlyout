@@ -786,6 +786,11 @@ public partial class MainWindow : MicaWindow
         }
     }
 
+    internal void RefreshObsMediaSource()
+    {
+        PublishObsMediaState();
+    }
+
     private MediaSession? GetObsMediaSession()
     {
         var sessions = mediaManager.CurrentMediaSessions.Values
