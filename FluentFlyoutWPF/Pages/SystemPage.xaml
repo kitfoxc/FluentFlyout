@@ -176,45 +176,6 @@
                 </StackPanel>
             </ui:CardControl>
 
-            <!-- OBS Now Playing integration -->
-            <TextBlock Text="OBS Now Playing" FontSize="14" FontWeight="SemiBold" Margin="0,12,0,6" />
-            <ui:CardControl x:Name="ObsNowPlayingEnabledCard" Tag="Indexable" Icon="{ui:SymbolIcon Globe24}" Margin="0,0,0,3">
-                <ui:CardControl.Header>
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="Enable OBS Now Playing" FontSize="14" FontWeight="Regular" />
-                        <TextBlock Text="Serve your current media information to an OBS Browser Source on this PC." FontSize="12" Opacity="0.5" TextWrapping="Wrap" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding ObsNowPlayingEnabled, Mode=TwoWay}" />
-            </ui:CardControl>
-            <ui:CardControl x:Name="ObsMediaSourceCard" Tag="Indexable" Icon="{ui:SymbolIcon Globe24}" Margin="0,0,0,3">
-                <ui:CardControl.Header>
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="OBS media source" FontSize="14" FontWeight="Regular" />
-                        <TextBlock Text="Choose a player independently from the media shown in the FluentFlyout." FontSize="12" Opacity="0.5" TextWrapping="Wrap" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ComboBox x:Name="ObsMediaSourceComboBox" SelectionChanged="ObsMediaSourceComboBox_SelectionChanged"
-                          MinWidth="220" Style="{StaticResource DefaultComboBoxStyle}" />
-            </ui:CardControl>
-            <ui:CardControl x:Name="ObsNowPlayingPortCard" Tag="Indexable" Icon="{ui:SymbolIcon Globe24}" Margin="0,0,0,12">
-                <ui:CardControl.Header>
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="Local service port" FontSize="14" FontWeight="Regular" />
-                        <TextBlock Text="Changing the port restarts the local service. Allowed range: 1024–65535." FontSize="12" Opacity="0.5" TextWrapping="Wrap" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <TextBox Text="{Binding ObsNowPlayingPort, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                         Width="110" HorizontalContentAlignment="Right"
-                         VerticalContentAlignment="Center" Padding="8,4"
-                         ToolTip="Default: 17832" />
-            </ui:CardControl>
-            <TextBlock Text="OBS Browser Source URL: http://127.0.0.1:[port]/" FontSize="12" Opacity="0.65" Margin="4,0,0,16">
-                <TextBlock.ToolTip>
-                    <TextBlock Text="Use the configured port shown above. The service listens on loopback only and is not exposed to your local network." TextWrapping="Wrap" />
-                </TextBlock.ToolTip>
-            </TextBlock>
-
             <!-- update section -->
             <TextBlock Text="{DynamicResource UpdatesSectionTitle}" FontSize="14" FontWeight="SemiBold" Margin="0,12,0,6" />
             <ui:CardControl x:Name="ShowUpdateNotificationsTitleCard" Tag="Indexable" Margin="0,0,0,36" >
