@@ -59,6 +59,12 @@ body {
   pointer-events: none;
 }
 
+/* Fully detach the idle widget from layout and rendering while keeping the
+   lightweight WebSocket listener alive so a new track can wake the page. */
+.widget.is-sleeping {
+  display: none;
+}
+
 .cover-wrap {
   position: relative;
   flex: 0 0 clamp(64px, 22vw, 96px);
