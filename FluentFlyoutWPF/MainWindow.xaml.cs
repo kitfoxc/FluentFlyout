@@ -867,12 +867,9 @@ public partial class MainWindow : MicaWindow
         var focusedSession = GetActiveMediaSession();
         if (focusedSession == null)
         {
-            _mediaStateStore.Clear();
             taskbarWindow?.UpdateUi("-", "-", null, GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed);
             return;
         }
-
-        PublishObsMediaState();
 
         var tbSongInfo = TryGetMediaProperties(focusedSession.ControlSession);
         if (tbSongInfo != null)
@@ -918,7 +915,6 @@ public partial class MainWindow : MicaWindow
             return;
 
         var playbackInfo = currentActiveSession.ControlSession.GetPlaybackInfo();
-        PublishObsMediaState();
 
         string check = songInfo.Title + songInfo.Artist + playbackInfo.PlaybackStatus;
         int checkThumbnail = BitmapHelper.GetStableThumbnailHash(songInfo.Thumbnail);
