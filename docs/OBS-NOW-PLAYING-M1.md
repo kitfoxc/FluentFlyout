@@ -54,6 +54,20 @@
 Protocol version: `1.0`. The server sends `state.snapshot` on connect and
 `media.changed` for subsequent SMTC updates. Playback commands are not exposed.
 
+## M3.1 — independent OBS media source selection
+
+- Added a System Settings picker listing currently available, allowed SMTC players.
+- `Automatic (follow FluentFlyout)` keeps OBS aligned with the app's existing
+  active-session selection.
+- Selecting a player pins that SMTC session for OBS only; the desktop Flyout,
+  Taskbar Widget and existing global pinned-player preference remain unchanged.
+- The OBS-specific session ID is persisted separately as
+  `ObsPinnedSessionId`.
+- OBS state is refreshed when any media session changes, including the
+  independently selected player. Closing the selected session clears the
+  OBS-specific pin and returns to automatic selection.
+- Existing app filtering rules are applied to the OBS source list and selector.
+
 ## Local verification checklist
 
 1. Build `FluentFlyoutWPF.csproj` with .NET 10 on Windows.
