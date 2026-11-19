@@ -141,3 +141,42 @@ other feature pages in Settings; its controls are no longer embedded in System.
   endpoint rejects paths that escape the selected folder.
 - The Home dashboard now has a WebSocket card directly before System Settings.
   It displays the enabled/disabled state and opens the dedicated WebSocket page.
+
+
+## M3.3 — WebSocket delivery and browser progress smoothing
+
+This iteration intentionally does not change the original FluentFlyout SMTC
+position calculation or the native media Flyout seek-bar implementation.
+The optimization is isolated to the OBS publishing and Browser Source path.
+
+- `ObsWebServer` coalesces media-state callbacks over a 100 ms window and
+  publishes only the newest pending snapshot.
+- `WebSocketHub` uses a per-client sender. A slow Browser Source retains at
+  most one pending media snapshot; newer snapshots replace older pending ones.
+- Control messages such as `theme.changed` use a separate FIFO queue and are
+  not overwritten by media snapshots.
+- Removed the global socket-send semaphore. Each client still has exactly one
+  sender, while a slow client no longer blocks broadcasts to other clients.
+- The browser API rejects duplicate or older sequence numbers, including
+  delayed frames around reconnects.
+- The built-in theme maintains its own continuous playhead between snapshots.
+  Small incoming position differences are eased over time; large differences
+  are applied immediately as seek/timeline discontinuities.
+- Protocol 1.0 and the existing media fields remain unchanged. Custom themes
+  continue receiving the same `onMediaChanged` snapshots.
+
+### M3.3 verification
+
+1. Confirm `MainWindow.xaml.cs` SMTC position calculation and native seek-bar
+   logic are unchanged.
+2. Confirm a burst of timeline events produces at most one pending media
+   snapshot per client.
+3. Simulate a slow Browser Source and verify old pending snapshots are replaced
+   rather than delivered as a backlog.
+4. Connect two Browser Sources and verify a slow client does not delay the
+   other client.
+5. Verify duplicate/out-of-order sequence numbers are ignored.
+6. Verify ordinary sub-second position changes do not restart or visibly jump
+   the built-in progress animation.
+7. Verify a large manual seek still updates the progress bar promptly.
+8. Verify `theme.changed` is delivered even during frequent media updates.
