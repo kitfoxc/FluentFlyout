@@ -22,6 +22,7 @@ let state = null;
 let lastSequence = -1;
 let receivedAt = performance.now();
 let animationFrame = 0;
+let currentCoverUrl = null;
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -39,9 +40,13 @@ function setConnected(connected) {
 }
 
 function setCover(url) {
+  if (url === currentCoverUrl) return;
+  currentCoverUrl = url;
+
   if (!url) {
     elements.cover.hidden = true;
     elements.coverPlaceholder.hidden = false;
+    elements.cover.removeAttribute("src");
     return;
   }
 
@@ -85,6 +90,7 @@ function render(nextState) {
   );
 
   setCover(state.coverUrl ? `${state.coverUrl}?token=${encodeURIComponent(authToken)}` : null);
+  if (animationFrame) cancelAnimationFrame(animationFrame);
   updateProgress();
 }
 
