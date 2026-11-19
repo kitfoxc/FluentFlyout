@@ -751,6 +751,14 @@ public partial class UserSettings : ObservableObject
     [ObservableProperty]
     public partial bool AnonymousTelemetryAllowed { get; set; }
 
+    /// <summary>Enable the local OBS Now Playing HTTP and WebSocket service.</summary>
+    [ObservableProperty]
+    public partial bool ObsNowPlayingEnabled { get; set; }
+
+    /// <summary>Loopback HTTP port used by OBS Browser Sources.</summary>
+    [ObservableProperty]
+    public partial int ObsNowPlayingPort { get; set; }
+
     [XmlIgnore]
     private bool _initializing = true;
 
@@ -848,6 +856,8 @@ public partial class UserSettings : ObservableObject
         LegacyTaskbarWidthEnabled = false;
         Uuid = Guid.NewGuid();
         AnonymousTelemetryAllowed = true;
+        ObsNowPlayingEnabled = true;
+        ObsNowPlayingPort = 17832;
         AllowedApps = [];
         BlockedApps = [];
 
@@ -909,6 +919,31 @@ public partial class UserSettings : ObservableObject
     internal void CompleteInitialization()
     {
         _initializing = false;
+    }
+
+    partial void OnObsNowPlayingEnabledChanged(bool oldValue, bool newValue)
+    {
+        if (oldValue == newValue || _initializing) return;
+        ApplyObsNowPlayingSettings();
+    }
+
+    partial void OnObsNowPlayingPortChanged(int oldValue, int newValue)
+    {
+        if (oldValue == newValue || _initializing) return;
+
+        if (newValue is < 1024 or > 65535)
+        {
+            ObsNowPlayingPort = 17832;
+            return;
+        }
+
+        ApplyObsNowPlayingSettings();
+    }
+
+    private static void ApplyObsNowPlayingSettings()
+    {
+        if (Application.Current?.MainWindow is MainWindow mainWindow)
+            mainWindow.ApplyObsServerSettings();
     }
 
     partial void OnAppLanguageChanged(string oldValue, string newValue)
