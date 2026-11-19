@@ -57,3 +57,12 @@ updates and re-synchronizes when new state arrives.
 The page is transparent outside the Fluent-inspired media card. It hides when
 no SMTC session is available and reconnects automatically after service or
 Browser Source restarts.
+
+## Runtime note
+
+The current implementation uses the `Microsoft.AspNetCore.App` shared
+framework for Kestrel. Development machines with the .NET 10 SDK have this
+framework available. Before distributing a framework-dependent build, ensure
+the ASP.NET Core 10 Runtime is installed alongside the .NET Desktop Runtime,
+or configure the release packaging as self-contained. This packaging decision
+is tracked for the next milestone.
