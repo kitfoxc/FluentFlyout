@@ -42,6 +42,7 @@ public partial class MainWindow : MicaWindow
 
     private readonly MediaStateStore _mediaStateStore = new();
     private readonly CoverArtStore _coverArtStore = new();
+    private WebThemeManager? _webThemeManager;
     private readonly SemaphoreSlim _obsServerGate = new(1, 1);
     private ObsWebServer? _obsWebServer;
 
@@ -163,9 +164,12 @@ public partial class MainWindow : MicaWindow
 
         // RestoreSettings may replace SettingsManager.Current instance, so rebind DataContext.
         DataContext = SettingsManager.Current;
+        _webThemeManager = new WebThemeManager();
         _obsWebServer = new ObsWebServer(
             _mediaStateStore,
             _coverArtStore,
+            _webThemeManager,
+            () => SettingsManager.Current.WebSocketThemeFileName,
             SettingsManager.Current.ObsNowPlayingPort);
 
         if (SettingsManager.Current.Startup == true) // add to startup programs if enabled, needs improvement
@@ -789,6 +793,12 @@ public partial class MainWindow : MicaWindow
     internal void RefreshObsMediaSource()
     {
         PublishObsMediaState();
+    }
+
+    internal void RefreshWebSocketTheme()
+    {
+        if (_obsWebServer?.IsRunning == true)
+            _ = _obsWebServer.NotifyThemeChangedAsync();
     }
 
     private MediaSession? GetObsMediaSession()
