@@ -8,6 +8,8 @@ using FluentFlyout.Controls;
 using FluentFlyout.Windows;
 using FluentFlyoutWPF.Classes;
 using FluentFlyoutWPF.Classes.Services;
+using FluentFlyoutWPF.Classes.OBS.Models;
+using FluentFlyoutWPF.Classes.OBS.Services;
 using FluentFlyoutWPF.Classes.Utils;
 using FluentFlyoutWPF.ViewModels;
 using FluentFlyoutWPF.Windows;
@@ -36,6 +38,10 @@ namespace FluentFlyoutWPF;
 public partial class MainWindow : MicaWindow
 {
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
+    private readonly MediaStateStore _mediaStateStore = new();
+
+    internal MediaStateStore MediaStateStore => _mediaStateStore;
 
     private int WM_TASKBARCREATED, WM_SHELLHOOK;
 
@@ -768,6 +774,43 @@ public partial class MainWindow : MicaWindow
         }
     }
 
+    private void PublishMediaState(MediaSession? session)
+    {
+        if (session == null)
+        {
+            _mediaStateStore.Clear();
+            return;
+        }
+
+        var properties = TryGetMediaProperties(session.ControlSession);
+        if (properties == null)
+            return;
+
+        var playback = session.ControlSession.GetPlaybackInfo();
+        var timeline = session.ControlSession.GetTimelineProperties();
+        var duration = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds);
+        var playerName = MediaPlayerData.GetAndCacheMediaPlayerData(session.Id).Item1;
+
+        _mediaStateStore.Publish(new NowPlayingInfo
+        {
+            SessionId = session.Id,
+            Title = properties.Title,
+            Artist = properties.Artist,
+            Album = properties.AlbumTitle,
+            PlayerName = playerName,
+            PlaybackStatus = playback?.PlaybackStatus switch
+            {
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => NowPlayingPlaybackStatus.Playing,
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => NowPlayingPlaybackStatus.Paused,
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed => NowPlayingPlaybackStatus.Closed,
+                _ => NowPlayingPlaybackStatus.Stopped
+            },
+            Position = Math.Max(0, timeline.Position.TotalSeconds),
+            Duration = duration,
+            IsAvailable = true
+        });
+    }
+
     private void CurrentSession_OnPlaybackStateChanged(MediaSession mediaSession, GlobalSystemMediaTransportControlsSessionPlaybackInfo? playbackInfo = null)
     {
 #if DEBUG
@@ -778,9 +821,12 @@ public partial class MainWindow : MicaWindow
         var focusedSession = GetActiveMediaSession();
         if (focusedSession == null)
         {
+            _mediaStateStore.Clear();
             taskbarWindow?.UpdateUi("-", "-", null, GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed);
             return;
         }
+
+        PublishMediaState(focusedSession);
 
         var tbSongInfo = TryGetMediaProperties(focusedSession.ControlSession);
         if (tbSongInfo != null)
@@ -823,6 +869,7 @@ public partial class MainWindow : MicaWindow
             return;
 
         var playbackInfo = currentActiveSession.ControlSession.GetPlaybackInfo();
+        PublishMediaState(currentActiveSession);
 
         string check = songInfo.Title + songInfo.Artist + playbackInfo.PlaybackStatus;
         int checkThumbnail = BitmapHelper.GetStableThumbnailHash(songInfo.Thumbnail);
@@ -899,6 +946,8 @@ public partial class MainWindow : MicaWindow
     {
         if (GetActiveMediaSession() is not { } session || session.Id != mediaSession.Id) return;
 
+        PublishMediaState(session);
+
         if (_seekBarEnabled)
         {
             Dispatcher.Invoke(() =>
@@ -923,6 +972,7 @@ public partial class MainWindow : MicaWindow
             SettingsManager.Current.PinnedSessionId = string.Empty;
         }
         UpdateTaskbar();
+        PublishMediaState(GetActiveMediaSession());
     }
 
     private static IntPtr SetHook(LowLevelKeyboardProc proc) // set the keyboard hook
