@@ -84,3 +84,45 @@ Protocol version: `1.0`. The server sends `state.snapshot` on connect and
 - Add status diagnostics and a copy-URL action.
 - Test multiple simultaneous Browser Sources and long-running reconnections.
 - Validate packaged runtime requirements for ASP.NET Core.
+
+
+## WebSocket page and user HTML templates
+
+The integration is now presented as a first-class **WebSocket** page beside the
+other feature pages in Settings; its controls are no longer embedded in System.
+
+- User templates live in `%APPDATA%\\FluentFlyout\\web-theme`.
+- On first run, the packaged default HTML page is copied to
+  `default.html` in that folder.
+- The WebSocket page scans top-level `.html` files and offers a refresh action.
+- Selecting a template updates the persisted `WebSocketThemeFileName` setting.
+- The server serves the selected HTML file at the same Browser Source root URL.
+- Connected Browser Sources receive `theme.changed` and reload the page.
+- Custom templates include `/js/fluentflyout-api.js` and use
+  `FluentFlyout.onMediaChanged(callback)` to receive media snapshots.
+- Initial implementation supports self-contained HTML files with inline CSS/JS.
+  Supporting companion assets in nested theme folders is intentionally deferred.
+- HTML templates execute JavaScript in OBS Browser Source and must be treated
+  as trusted local code.
+
+### Custom HTML example
+
+```html
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>My WebSocket theme</title></head>
+<body>
+  <img id="cover" alt="">
+  <h1 id="title">Nothing playing</h1>
+  <p id="artist"></p>
+  <script src="/js/fluentflyout-api.js"></script>
+  <script>
+    FluentFlyout.onMediaChanged(media => {
+      document.querySelector("#title").textContent = media.title || "";
+      document.querySelector("#artist").textContent = media.artist || "";
+      document.querySelector("#cover").src = media.coverUrl || "";
+    });
+  </script>
+</body>
+</html>
+```
