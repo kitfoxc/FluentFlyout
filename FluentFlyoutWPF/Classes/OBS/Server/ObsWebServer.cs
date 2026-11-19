@@ -6,6 +6,7 @@ using FluentFlyoutWPF.Classes.OBS.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net.WebSockets;
@@ -127,6 +128,30 @@ public sealed class ObsWebServer : IAsyncDisposable
             }
         });
 
+        var themeAssetContentTypes = new FileExtensionContentTypeProvider();
+        app.MapGet("/theme-assets/{**assetPath}", (string assetPath) =>
+        {
+            try
+            {
+                var assetPathOnDisk = _themeManager.ResolveThemeAssetPath(
+                    assetPath,
+                    _selectedThemeFileName());
+
+                if (!themeAssetContentTypes.TryGetContentType(assetPathOnDisk, out var contentType))
+                    contentType = "application/octet-stream";
+
+                return Results.File(assetPathOnDisk, contentType);
+            }
+            catch (FileNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.BadRequest();
+            }
+        });
+
         app.MapGet("/api/health", () => Results.Json(new
         {
             status = "ok",
@@ -172,7 +197,7 @@ public sealed class ObsWebServer : IAsyncDisposable
             _app = app;
             _started = true;
             NLog.LogManager.GetCurrentClassLogger().Info(
-                "OBS Now Playing server started at {0}", BaseUrl);
+                "WebSocket server started at {0}", BaseUrl);
         }
         catch
         {
