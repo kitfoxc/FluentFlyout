@@ -131,7 +131,7 @@ public sealed class WebSocketHub
         {
             while (true)
             {
-                string? message;
+                string message;
                 lock (_sync)
                 {
                     if (_controlMessages.Count > 0)
