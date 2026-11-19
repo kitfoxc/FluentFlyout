@@ -52,11 +52,19 @@ function setCover(url) {
 
   const image = new Image();
   image.onload = () => {
+    // Ignore stale image completions if the track changed while loading.
+    if (currentCoverUrl !== url) return;
+
     elements.cover.src = url;
     elements.cover.hidden = false;
     elements.coverPlaceholder.hidden = true;
   };
   image.onerror = () => {
+    if (currentCoverUrl !== url) return;
+
+    // Permit a later state update to retry this cover instead of caching
+    // a transient browser/network failure forever.
+    currentCoverUrl = null;
     elements.cover.hidden = true;
     elements.coverPlaceholder.hidden = false;
   };
