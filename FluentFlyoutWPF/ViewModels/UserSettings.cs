@@ -867,7 +867,7 @@ public partial class UserSettings : ObservableObject
         ObsNowPlayingEnabled = true;
         ObsNowPlayingPort = 17832;
         ObsPinnedSessionId = string.Empty;
-        WebSocketThemeFileName = "default.html";
+        WebSocketThemeFileName = "default";
         AllowedApps = [];
         BlockedApps = [];
 
