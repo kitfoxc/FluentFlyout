@@ -229,6 +229,8 @@ function setCover(url) {
   image.onload = () => {
     if (pendingCoverImage !== image || currentCoverUrl !== url) return;
     pendingCoverImage = null;
+    image.onload = null;
+    image.onerror = null;
     elements.cover.src = url;
     elements.cover.hidden = false;
     elements.coverPlaceholder.hidden = true;
@@ -236,6 +238,8 @@ function setCover(url) {
   image.onerror = () => {
     if (pendingCoverImage !== image || currentCoverUrl !== url) return;
     pendingCoverImage = null;
+    image.onload = null;
+    image.onerror = null;
     currentCoverUrl = null;
     elements.cover.removeAttribute("src");
     elements.cover.hidden = true;
