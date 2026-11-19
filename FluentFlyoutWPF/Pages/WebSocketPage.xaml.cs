@@ -4,6 +4,7 @@
 using FluentFlyout.Classes.Settings;
 using FluentFlyout.Classes.Utils;
 using FluentFlyoutWPF.Classes.OBS.Services;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
