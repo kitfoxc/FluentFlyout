@@ -180,3 +180,50 @@ The optimization is isolated to the OBS publishing and Browser Source path.
    the built-in progress animation.
 7. Verify a large manual seek still updates the progress bar promptly.
 8. Verify `theme.changed` is delivered even during frequent media updates.
+
+
+## WebSocket progress calibration and idle sleep
+
+This iteration keeps FluentFlyout's original media-position calculation and
+native seek bar untouched. The only C# change in `MainWindow.xaml.cs` copies
+the existing SMTC `TimelineProperties.LastUpdatedTime` into the additive
+`timelineLastUpdatedTime` field for Browser Source consumers.
+
+The built-in Browser Source now:
+
+- Waits for at least three fresh, advancing timeline samples across a minimum
+  500 ms window before starting local progress interpolation.
+- Holds the displayed position during startup calibration and buffering.
+- Enters a stalled state after 3.5 seconds without observed forward movement,
+  or when the SMTC sample timestamp is stale by more than 4.5 seconds.
+- Requires consecutive forward samples before resuming from a stall.
+- Smooths a short forward jump after a detected pause in timeline movement;
+  ordinary large seeks remain immediate.
+- Keeps paused progress static and sleeps after five minutes of continuous
+  pause.
+- Sleeps immediately when no media is available or the playback state is
+  Stopped/Closed.
+- Stops requestAnimationFrame while calibrating, stalled, paused, hidden, or
+  asleep; releases pending and displayed cover-image resources on sleep; and
+  keeps only the single WebSocket subscription needed to wake on new playback.
+
+The WebSocket connection intentionally remains open while the widget sleeps.
+Closing it would prevent immediate wake-up and require polling/reconnect timers,
+which would add rather than remove background work.
+
+### Verification checklist
+
+1. Start a network stream with delayed buffering: the progress bar must remain
+   still until fresh SMTC samples advance consistently.
+2. Confirm normal local playback starts after calibration without a visible
+   artificial delay.
+3. Buffer during playback: the progress bar must freeze instead of continuing
+   to run ahead.
+4. Resume after buffering: short forward gaps should ease smoothly; a manual
+   seek should still respond promptly.
+5. Pause playback: progress remains static; after five minutes the widget
+   disappears and album-art resources are released.
+6. Resume after the paused sleep: the widget wakes and recalibrates.
+7. Stop playback or remove the media session: the widget sleeps immediately.
+8. Leave the source idle for several minutes and verify there is no active
+   animation-frame loop or accumulating timer/listener count.
