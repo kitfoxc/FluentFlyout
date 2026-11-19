@@ -759,9 +759,13 @@ public partial class UserSettings : ObservableObject
     [ObservableProperty]
     public partial int ObsNowPlayingPort { get; set; }
 
-    /// <summary>Optional SMTC session ID pinned exclusively for OBS output.</summary>
+    /// <summary>Optional SMTC session ID pinned exclusively for WebSocket output.</summary>
     [ObservableProperty]
     public partial string ObsPinnedSessionId { get; set; }
+
+    /// <summary>Selected HTML template filename from the Roaming web-theme directory.</summary>
+    [ObservableProperty]
+    public partial string WebSocketThemeFileName { get; set; }
 
     [XmlIgnore]
     private bool _initializing = true;
@@ -863,6 +867,7 @@ public partial class UserSettings : ObservableObject
         ObsNowPlayingEnabled = true;
         ObsNowPlayingPort = 17832;
         ObsPinnedSessionId = string.Empty;
+        WebSocketThemeFileName = "default.html";
         AllowedApps = [];
         BlockedApps = [];
 
