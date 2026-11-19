@@ -42,7 +42,8 @@ public partial class MainWindow : MicaWindow
 
     private readonly MediaStateStore _mediaStateStore = new();
     private readonly CoverArtStore _coverArtStore = new();
-    private readonly ObsWebServer _obsWebServer;
+    private readonly SemaphoreSlim _obsServerGate = new(1, 1);
+    private ObsWebServer? _obsWebServer;
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -96,7 +97,6 @@ public partial class MainWindow : MicaWindow
 
     public MainWindow()
     {
-        _obsWebServer = new ObsWebServer(_mediaStateStore, _coverArtStore);
         DataContext = SettingsManager.Current;
         WindowHelper.SetNoActivate(this); // prevents some fullscreen apps from minimizing
         InitializeComponent();
@@ -163,6 +163,10 @@ public partial class MainWindow : MicaWindow
 
         // RestoreSettings may replace SettingsManager.Current instance, so rebind DataContext.
         DataContext = SettingsManager.Current;
+        _obsWebServer = new ObsWebServer(
+            _mediaStateStore,
+            _coverArtStore,
+            SettingsManager.Current.ObsNowPlayingPort);
 
         if (SettingsManager.Current.Startup == true) // add to startup programs if enabled, needs improvement
         {
@@ -1615,15 +1619,49 @@ public partial class MainWindow : MicaWindow
         }
     }
 
+    /// <summary>
+    /// Applies the current OBS integration settings. Calls are serialized because
+    /// changing the port requires stopping and rebuilding the Kestrel listener.
+    /// </summary>
+    internal void ApplyObsServerSettings()
+    {
+        _ = ApplyObsServerSettingsAsync();
+    }
+
     private async Task StartObsWebServerAsync()
     {
+        await ApplyObsServerSettingsAsync();
+    }
+
+    private async Task ApplyObsServerSettingsAsync()
+    {
+        await _obsServerGate.WaitAsync();
         try
         {
+            if (_obsWebServer == null || _isCleaningUp)
+                return;
+
+            if (_obsWebServer.IsRunning)
+                await _obsWebServer.StopAsync();
+
+            if (!SettingsManager.Current.ObsNowPlayingEnabled)
+            {
+                Logger.Info("OBS Now Playing server is disabled in settings");
+                return;
+            }
+
+            if (_obsWebServer.Port != SettingsManager.Current.ObsNowPlayingPort)
+                _obsWebServer.ReconfigurePort(SettingsManager.Current.ObsNowPlayingPort);
+
             await _obsWebServer.StartAsync();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to start OBS Now Playing server");
+            Logger.Error(ex, "Failed to apply OBS Now Playing server settings");
+        }
+        finally
+        {
+            _obsServerGate.Release();
         }
     }
 
@@ -1647,7 +1685,7 @@ public partial class MainWindow : MicaWindow
             _isCleaningUp = true;
             try
             {
-                _obsWebServer.StopAsync().GetAwaiter().GetResult();
+                _obsWebServer?.StopAsync().GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
