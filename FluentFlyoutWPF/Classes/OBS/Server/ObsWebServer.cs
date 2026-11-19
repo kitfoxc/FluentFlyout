@@ -198,6 +198,18 @@ public sealed class ObsWebServer : IAsyncDisposable
         NLog.LogManager.GetCurrentClassLogger().Info("OBS Now Playing server stopped");
     }
 
+    /// <summary>Notifies connected Browser Sources to reload the selected HTML theme.</summary>
+    public Task NotifyThemeChangedAsync()
+    {
+        var message = JsonSerializer.Serialize(new
+        {
+            protocol = "1.0",
+            type = "theme.changed"
+        }, _jsonOptions);
+
+        return _hub.BroadcastAsync(message);
+    }
+
     private void OnMediaStateChanged(NowPlayingInfo state)
     {
         var message = JsonSerializer.Serialize(
