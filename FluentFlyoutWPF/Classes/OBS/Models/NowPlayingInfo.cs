@@ -30,6 +30,13 @@ public sealed record NowPlayingInfo
     /// <summary>Track duration, in seconds. Zero means unknown.</summary>
     public double Duration { get; init; }
 
+    /// <summary>
+    /// SMTC timestamp for the reported timeline position. This is metadata for
+    /// external presentation clients and does not alter FluentFlyout's own
+    /// media-position calculation.
+    /// </summary>
+    public DateTimeOffset? TimelineLastUpdatedTime { get; init; }
+
     /// <summary>Opaque identifier used by the local cover-art endpoint.</summary>
     public string? CoverId { get; init; }
 
