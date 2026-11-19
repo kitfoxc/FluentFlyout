@@ -12,7 +12,7 @@
 
 ## M2 — local HTTP and WebSocket transport
 
-- `ObsWebServer`: Kestrel server bound only to `127.0.0.1:17832`.
+- `ObsWebServer`: Kestrel server bound only to `127.0.0.1`.
 - `WebSocketHub`: manages Browser Source clients and serializes socket sends.
 - Per-process random token protects state, WebSocket and cover-art endpoints.
 - Browser requests carrying an Origin header are restricted to localhost on
@@ -25,11 +25,20 @@
 - Web assets are copied to the application output directory.
 - Server startup and shutdown are tied to the MainWindow lifetime.
 
-### Browser Source
+## M3 — user-configurable integration
 
-`http://127.0.0.1:17832/`
+- Added persisted `ObsNowPlayingEnabled` and `ObsNowPlayingPort` settings.
+- Added OBS Now Playing controls to System Settings.
+- Disabling the integration stops the HTTP/WebSocket listener without
+  stopping SMTC or affecting the native FluentFlyout media UI.
+- Changing the port stops and restarts the local service on the new port.
+- Port values are restricted to 1024–65535; the default remains 17832.
+- The listener remains loopback-only (`127.0.0.1`), not LAN-accessible.
+- Settings continue to use the existing XML persistence mechanism.
 
-Suggested initial size: 520 × 150.
+### Browser Source URL
+
+`http://127.0.0.1:<configured-port>/`
 
 ### HTTP endpoints
 
@@ -40,24 +49,24 @@ Suggested initial size: 520 × 150.
 
 ### WebSocket
 
-`ws://127.0.0.1:17832/ws?token=...`
+`ws://127.0.0.1:<configured-port>/ws?token=...`
 
-Protocol version: `1.0`.
+Protocol version: `1.0`. The server sends `state.snapshot` on connect and
+`media.changed` for subsequent SMTC updates. Playback commands are not exposed.
 
-The server sends `state.snapshot` on connect and `media.changed` for
-subsequent SMTC updates. The WebSocket endpoint is read-only; playback
-commands are deliberately excluded from this milestone.
+## Local verification checklist
 
-## Build validation
+1. Build `FluentFlyoutWPF.csproj` with .NET 10 on Windows.
+2. Confirm the service starts when OBS Now Playing is enabled.
+3. Disable the setting and confirm the listener stops.
+4. Re-enable it and confirm the default URL works again.
+5. Change the port, then confirm the old port closes and the new port serves
+   `/api/health`.
+6. Verify the OBS Browser Source reconnects after a port change using the new URL.
 
-A Windows GitHub Actions workflow was added at
-`.github/workflows/obs-now-playing-build.yml`. It restores the solution and
-builds the WPF project on pushes to the OBS feature branch. A successful local
-or CI build is still required before treating the implementation as verified.
+## Follow-up
 
-## M3 follow-up
-
-- Add OBS integration settings and configurable port/enable switch.
-- Exercise multiple simultaneous Browser Sources and reconnect behavior.
-- Validate thumbnail cache eviction and player-specific SMTC behavior.
-- Add tests for protocol serialization and session selection.
+- Add media source selection modes (Auto, pinned session, priority list).
+- Add status diagnostics and a copy-URL action.
+- Test multiple simultaneous Browser Sources and long-running reconnections.
+- Validate packaged runtime requirements for ASP.NET Core.
