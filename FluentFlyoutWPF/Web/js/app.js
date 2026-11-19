@@ -25,11 +25,15 @@ const SYNC = Object.freeze({
 
 const PAUSED_SLEEP_MS = 5 * 60 * 1000;
 const CALIBRATION_TIMEOUT_MS = 5000;
+const CALIBRATION_SAMPLE_WINDOW_MS = CALIBRATION_TIMEOUT_MS;
 const CALIBRATION_MIN_SAMPLES = 3;
 const CALIBRATION_MIN_SPAN_MS = 500;
 const CALIBRATION_MIN_ADVANCE = 0.12;
 const STALL_TIMEOUT_MS = 3500;
 const STALE_TIMELINE_MS = 4500;
+// Allow slow SMTC providers to deliver two recovery samples without requiring
+// an unrealistically short update interval.
+const RECOVERY_SAMPLE_WINDOW_MS = STALE_TIMELINE_MS * 2;
 const RECOVERY_SMOOTH_MAX_SECONDS = 8;
 
 let state = null;
@@ -86,6 +90,17 @@ function hasFreshTimeline(media) {
   // Older themes/sources may not send this additive field. In that case,
   // event arrival time remains the fallback freshness signal.
   return age === null || (age >= -1000 && age <= STALE_TIMELINE_MS);
+}
+
+function getReportedPosition(media, fallback = 0) {
+  const rawPosition = media?.position;
+  if (rawPosition === null || rawPosition === undefined || rawPosition === "")
+    return Math.max(0, Number(fallback) || 0);
+
+  const position = Number(rawPosition);
+  return Number.isFinite(position) && position >= 0
+    ? position
+    : Math.max(0, Number(fallback) || 0);
 }
 
 function stopAnimation() {
@@ -259,10 +274,13 @@ function resetAnchor(position, now = performance.now()) {
 }
 
 function beginCalibration(media, now) {
-  const position = Math.max(0, Number(media.position) || 0);
+  const position = getReportedPosition(media);
+  const fresh = hasFreshTimeline(media);
   syncMode = SYNC.CALIBRATING;
   calibrationStartedAt = now;
-  calibrationSamples = [{ position, at: now, fresh: hasFreshTimeline(media) }];
+  // A stale first snapshot may anchor the frozen display, but it must never
+  // count as evidence that the source has started advancing.
+  calibrationSamples = fresh ? [{ position, at: now }] : [];
   recoverySamples = [];
   lastPositionSample = position;
   lastAdvanceAt = now;
@@ -313,8 +331,10 @@ function processCalibrationSample(position, now, media) {
     return;
   }
 
-  calibrationSamples.push({ position, at: now, fresh: true });
-  calibrationSamples = calibrationSamples.filter(sample => now - sample.at <= 2000);
+  calibrationSamples.push({ position, at: now });
+  calibrationSamples = calibrationSamples.filter(
+    sample => now - sample.at <= CALIBRATION_SAMPLE_WINDOW_MS
+  );
 
   if (calibrationSamples.length >= CALIBRATION_MIN_SAMPLES) {
     const first = calibrationSamples[0];
@@ -345,7 +365,9 @@ function processStalledSample(position, now, media) {
   if (!hasFreshTimeline(media)) return;
 
   recoverySamples.push({ position, at: now });
-  recoverySamples = recoverySamples.filter(sample => now - sample.at <= 1200);
+  recoverySamples = recoverySamples.filter(
+    sample => now - sample.at <= RECOVERY_SAMPLE_WINDOW_MS
+  );
 
   if (recoverySamples.length >= 2) {
     const first = recoverySamples[0];
@@ -476,7 +498,7 @@ function render(media) {
     wakePage();
     renderMetadata(media);
     setCover(media.coverUrl || null);
-    renderPosition(Math.max(0, Number(media.position) || positionAnchor));
+    renderPosition(getReportedPosition(media, positionAnchor));
     schedulePausedSleep();
     return;
   }
@@ -517,7 +539,7 @@ function handleVisibilityChange() {
   if (state.playbackStatus === "Playing") {
     beginCalibration(state, performance.now());
   } else if (state.playbackStatus === "Paused") {
-    renderPosition(Math.max(0, Number(state.position) || positionAnchor));
+    renderPosition(getReportedPosition(state, positionAnchor));
   }
 }
 
