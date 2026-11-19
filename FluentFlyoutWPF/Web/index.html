@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>FluentFlyout Now Playing</title>
+  <link rel="stylesheet" href="/css/fluent.css">
+</head>
+<body>
+  <main id="widget" class="widget is-hidden" aria-live="polite">
+    <div class="cover-wrap">
+      <div class="cover-placeholder" id="cover-placeholder">♫</div>
+      <img id="cover" class="cover" alt="" hidden>
+    </div>
+    <section class="track">
+      <div class="eyebrow">
+        <span class="playing-dot" id="playing-dot"></span>
+        <span id="status-label">NOW PLAYING</span>
+        <span class="player" id="player"></span>
+      </div>
+      <div class="title" id="title">Nothing playing</div>
+      <div class="artist" id="artist"></div>
+      <div class="album" id="album"></div>
+      <div class="progress-area" id="progress-area">
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="time-row">
+          <span id="position">0:00</span>
+          <span id="duration">0:00</span>
+        </div>
+      </div>
+    </section>
+    <div class="connection" id="connection" title="Connection status"></div>
+  </main>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
