@@ -858,6 +858,7 @@ public partial class MainWindow : MicaWindow
             },
             Position = Math.Max(0, timeline.Position.TotalSeconds),
             Duration = duration,
+            TimelineLastUpdatedTime = timeline.LastUpdatedTime,
             CoverId = coverId,
             CoverUrl = coverId is null ? null : $"/api/covers/{coverId}",
             IsAvailable = true
