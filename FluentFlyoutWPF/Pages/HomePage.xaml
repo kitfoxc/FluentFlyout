@@ -103,7 +103,7 @@
         </StackPanel>
 
         <TextBlock Grid.Row="6" Text="{DynamicResource HomeDashboardTitle}" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6" />
-        <Grid Margin="-4" RowDefinitions="Auto, Auto, Auto, Auto" ColumnDefinitions="*, *">
+        <Grid Margin="-4" RowDefinitions="Auto, Auto, Auto, Auto, Auto" ColumnDefinitions="*, *">
             <ui:CardAction Grid.Row="0" Grid.Column="0" Margin="4" Padding="12,20" IsChevronVisible="True" Click="MediaFlyout_Click">
                 <ui:CardAction.Icon>
                     <ui:SymbolIcon Symbol="VideoPlayPause24" FontSize="30" Filled="False" />
@@ -236,7 +236,28 @@
                 </StackPanel>
             </ui:CardAction>
 
-            <ui:CardAction Grid.Row="3" Grid.Column="0" Margin="4" Padding="12,20" IsChevronVisible="True" Click="System_Click">
+            <ui:CardAction Grid.Row="3" Grid.Column="0" Margin="4" Padding="12,20" IsChevronVisible="True" Click="WebSocket_Click">
+                <ui:CardAction.Icon>
+                    <ui:SymbolIcon Symbol="Globe24" FontSize="30" Filled="False" />
+                </ui:CardAction.Icon>
+                <StackPanel>
+                    <ui:TextBlock FontWeight="Medium" Text="WebSocket" />
+                    <ui:TextBlock Appearance="Secondary" Text="{Binding ObsNowPlayingEnabled, Converter={StaticResource BoolToEnabledDisabledConverter}}">
+                        <ui:TextBlock.Style>
+                            <Style TargetType="ui:TextBlock">
+                                <Setter Property="Opacity" Value="1" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ObsNowPlayingEnabled}" Value="False">
+                                        <Setter Property="Opacity" Value="0.5" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:TextBlock.Style>
+                    </ui:TextBlock>
+                </StackPanel>
+            </ui:CardAction>
+
+            <ui:CardAction Grid.Row="4" Grid.Column="0" Margin="4" Padding="12,20" IsChevronVisible="True" Click="System_Click">
                 <ui:CardAction.Icon>
                     <ui:SymbolIcon Symbol="Settings24" FontSize="30" Filled="False" />
                 </ui:CardAction.Icon>
