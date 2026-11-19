@@ -25,6 +25,8 @@ public sealed class ObsWebServer : IAsyncDisposable
 
     private readonly MediaStateStore _stateStore;
     private readonly CoverArtStore _coverArtStore;
+    private readonly WebThemeManager _themeManager;
+    private readonly Func<string> _selectedThemeFileName;
     private readonly WebSocketHub _hub = new();
     private readonly string _webRoot;
     private readonly string _token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -36,10 +38,17 @@ public sealed class ObsWebServer : IAsyncDisposable
     private WebApplication? _app;
     private bool _started;
 
-    public ObsWebServer(MediaStateStore stateStore, CoverArtStore coverArtStore, int port = DefaultPort)
+    public ObsWebServer(
+        MediaStateStore stateStore,
+        CoverArtStore coverArtStore,
+        WebThemeManager themeManager,
+        Func<string> selectedThemeFileName,
+        int port = DefaultPort)
     {
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
         _coverArtStore = coverArtStore ?? throw new ArgumentNullException(nameof(coverArtStore));
+        _themeManager = themeManager ?? throw new ArgumentNullException(nameof(themeManager));
+        _selectedThemeFileName = selectedThemeFileName ?? throw new ArgumentNullException(nameof(selectedThemeFileName));
         if (port is < 1024 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(port));
 
@@ -98,11 +107,24 @@ public sealed class ObsWebServer : IAsyncDisposable
             await next(context);
         });
 
-        app.UseDefaultFiles();
-        app.UseStaticFiles();
+            app.UseStaticFiles();
         app.UseWebSockets(new WebSocketOptions
         {
             KeepAliveInterval = TimeSpan.FromSeconds(20)
+        });
+
+        app.MapGet("/", () =>
+        {
+            try
+            {
+                var html = _themeManager.ReadTheme(_selectedThemeFileName());
+                return Results.Content(html, "text/html; charset=utf-8");
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "Failed to load selected WebSocket HTML theme");
+                return Results.Problem("The selected WebSocket theme could not be loaded.");
+            }
         });
 
         app.MapGet("/api/health", () => Results.Json(new
