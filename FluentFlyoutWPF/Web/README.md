@@ -74,10 +74,27 @@ FluentFlyout creates the user theme directory on first launch:
 
 `%APPDATA%\\FluentFlyout\\web-theme`
 
-The built-in `index.html` is copied there as `default.html`. Put additional
-self-contained `.html` files directly in this directory, then open the
-**WebSocket** page in Settings and choose **Refresh themes**. Select a template
-to apply it; connected OBS Browser Sources are notified and reload automatically.
+The built-in `index.html` is copied there as `default.html`. Organize
+additional themes into subfolders, with one or more HTML files and their
+supporting CSS, JavaScript, and image assets in each folder. For example:
+
+```text
+web-theme/
+├── default.html
+├── Minimal/
+│   ├── compact.html
+│   ├── wide.html
+│   └── style.css
+└── Neon/
+    ├── neon.html
+    ├── theme.css
+    └── background.png
+```
+
+The WebSocket page recursively discovers `.html` files. The selector displays
+the folder path followed by the HTML name (for example, `Minimal / compact`).
+Select a template to apply it; connected OBS Browser Sources are notified and
+reload automatically. Use **Refresh themes** after adding or moving files.
 
 A custom HTML file should include the shared browser API:
 
@@ -100,8 +117,6 @@ the callback with the latest state when available and returns an unsubscribe
 function. `FluentFlyout.getState()` returns the latest snapshot, and
 `FluentFlyout.isConnected()` reports WebSocket connectivity.
 
-Templates are self-contained HTML documents in this initial implementation.
-Inline CSS and JavaScript are supported. Treat imported templates as trusted
-local code: HTML scripts execute in OBS's browser context. Only top-level
-`.html` files are discovered; nested folders and external theme assets are
-not currently part of the MVP.
+Templates may reference CSS, JavaScript and images using paths relative to the selected HTML file. These requests are served from that HTML file's containing theme folder through the guarded `/theme-assets/` route. Absolute application paths such as `/js/fluentflyout-api.js` continue to work. Theme folder paths cannot be used to access files outside the selected theme folder.
+
+Treat imported templates as trusted local code: HTML scripts execute in OBS's browser context. Only HTML files are selectable; each HTML file's containing folder is its asset root.
