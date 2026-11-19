@@ -1,7 +1,6 @@
 // Copyright (c) 2024-2026 The FluentFlyout Authors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using System.Collections.Concurrent;
 using System.IO;
 using System.Windows.Media.Imaging;
 
@@ -14,41 +13,48 @@ namespace FluentFlyoutWPF.Classes.OBS.Services;
 public sealed class CoverArtStore
 {
     private const int MaximumEntries = 16;
-    private readonly ConcurrentDictionary<string, byte[]> _covers = new();
-    private readonly ConcurrentQueue<string> _insertionOrder = new();
+    private readonly object _sync = new();
+    private readonly Dictionary<string, byte[]> _covers = new(StringComparer.Ordinal);
+    private readonly Queue<string> _insertionOrder = new();
 
     public string? Store(string cacheKey, BitmapSource? image)
     {
         if (string.IsNullOrWhiteSpace(cacheKey) || image is null)
             return null;
 
-        if (_covers.ContainsKey(cacheKey))
-            return cacheKey;
-
-        try
+        // Keep the cache check, encoding, insertion, and eviction atomic. Without
+        // this lock, concurrent duplicate requests can encode and enqueue the same
+        // key more than once, allowing a stale queue item to evict a newer entry.
+        lock (_sync)
         {
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(image));
+            if (_covers.ContainsKey(cacheKey))
+                return cacheKey;
 
-            using var stream = new MemoryStream();
-            encoder.Save(stream);
+            try
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
 
-            if (stream.Length == 0)
+                using var stream = new MemoryStream();
+                encoder.Save(stream);
+
+                if (stream.Length == 0)
+                    return null;
+
+                _covers.Add(cacheKey, stream.ToArray());
+                _insertionOrder.Enqueue(cacheKey);
+
+                while (_covers.Count > MaximumEntries && _insertionOrder.TryDequeue(out var oldest))
+                    _covers.Remove(oldest);
+
+                return cacheKey;
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger()
+                    .Warn(ex, "Failed to encode SMTC album artwork for OBS");
                 return null;
-
-            _covers[cacheKey] = stream.ToArray();
-            _insertionOrder.Enqueue(cacheKey);
-
-            while (_covers.Count > MaximumEntries && _insertionOrder.TryDequeue(out var oldest))
-                _covers.TryRemove(oldest, out _);
-
-            return cacheKey;
-        }
-        catch (Exception ex)
-        {
-            NLog.LogManager.GetCurrentClassLogger()
-                .Warn(ex, "Failed to encode SMTC album artwork for OBS");
-            return null;
+            }
         }
     }
 
@@ -60,6 +66,7 @@ public sealed class CoverArtStore
             return false;
         }
 
-        return _covers.TryGetValue(coverId, out imageBytes);
+        lock (_sync)
+            return _covers.TryGetValue(coverId, out imageBytes);
     }
 }

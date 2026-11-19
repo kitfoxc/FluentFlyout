@@ -829,15 +829,34 @@ public partial class MainWindow : MicaWindow
         }
 
         var properties = TryGetMediaProperties(session.ControlSession);
-        if (properties == null)
-            return;
-
         var playback = session.ControlSession.GetPlaybackInfo();
         var timeline = session.ControlSession.GetTimelineProperties();
         var duration = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds);
         var playerName = MediaPlayerData.GetAndCacheMediaPlayerData(session.Id).Item1;
-        var thumbnailHash = properties.Thumbnail is null ? 0 : BitmapHelper.GetStableThumbnailHash(properties.Thumbnail);
-        var thumbnail = BitmapHelper.GetThumbnail(properties.Thumbnail);
+
+        if (properties == null)
+        {
+            var current = _mediaStateStore.Current;
+            if (!current.IsAvailable ||
+                !string.Equals(current.SessionId, session.Id, StringComparison.Ordinal))
+            {
+                // Do not leave the previous player's metadata visible while a newly
+                // selected SMTC session is still preparing its media properties.
+                _mediaStateStore.Publish(new NowPlayingInfo
+                {
+                    SessionId = session.Id,
+                    PlayerName = playerName,
+                    PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
+                    Position = Math.Max(0, timeline.Position.TotalSeconds),
+                    Duration = duration,
+                    TimelineLastUpdatedTime = timeline.LastUpdatedTime,
+                    IsAvailable = true
+                });
+            }
+            return;
+        }
+
+        var thumbnail = BitmapHelper.GetThumbnail(properties.Thumbnail, out var thumbnailHash);
         var coverId = thumbnailHash == 0 || thumbnail is null
             ? null
             : _coverArtStore.Store($"{thumbnailHash:x8}", thumbnail);
@@ -849,13 +868,7 @@ public partial class MainWindow : MicaWindow
             Artist = properties.Artist,
             Album = properties.AlbumTitle,
             PlayerName = playerName,
-            PlaybackStatus = playback?.PlaybackStatus switch
-            {
-                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => NowPlayingPlaybackStatus.Playing,
-                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => NowPlayingPlaybackStatus.Paused,
-                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed => NowPlayingPlaybackStatus.Closed,
-                _ => NowPlayingPlaybackStatus.Stopped
-            },
+            PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
             Position = Math.Max(0, timeline.Position.TotalSeconds),
             Duration = duration,
             TimelineLastUpdatedTime = timeline.LastUpdatedTime,
@@ -863,6 +876,47 @@ public partial class MainWindow : MicaWindow
             CoverUrl = coverId is null ? null : $"/api/covers/{coverId}",
             IsAvailable = true
         });
+    }
+
+    private static NowPlayingPlaybackStatus ToObsPlaybackStatus(
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus? playbackStatus)
+    {
+        return playbackStatus switch
+        {
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => NowPlayingPlaybackStatus.Playing,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => NowPlayingPlaybackStatus.Paused,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed => NowPlayingPlaybackStatus.Closed,
+            _ => NowPlayingPlaybackStatus.Stopped
+        };
+    }
+
+    private void PublishObsTimelineState(
+        MediaSession session,
+        GlobalSystemMediaTransportControlsSessionTimelineProperties timeline)
+    {
+        var current = _mediaStateStore.Current;
+        if (!current.IsAvailable ||
+            !string.Equals(current.SessionId, session.Id, StringComparison.Ordinal))
+        {
+            PublishObsMediaState();
+            return;
+        }
+
+        try
+        {
+            var playback = session.ControlSession.GetPlaybackInfo();
+            _mediaStateStore.Publish(current with
+            {
+                PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
+                Position = Math.Max(0, timeline.Position.TotalSeconds),
+                Duration = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds),
+                TimelineLastUpdatedTime = timeline.LastUpdatedTime
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug(ex, "Failed to publish OBS timeline-only update");
+        }
     }
 
     private void CurrentSession_OnPlaybackStateChanged(MediaSession mediaSession, GlobalSystemMediaTransportControlsSessionPlaybackInfo? playbackInfo = null)
@@ -873,7 +927,9 @@ public partial class MainWindow : MicaWindow
         pauseOtherMediaSessionsIfNeeded(mediaSession);
 
         // OBS follows its own source selection, independently of the desktop flyout.
-        PublishObsMediaState();
+        if (GetObsMediaSession() is { } obsSession &&
+            string.Equals(obsSession.Id, mediaSession.Id, StringComparison.Ordinal))
+            PublishObsMediaState();
 
         var focusedSession = GetActiveMediaSession();
         if (focusedSession == null)
@@ -911,8 +967,10 @@ public partial class MainWindow : MicaWindow
 #if DEBUG
         Logger.Debug("Media property changed: " + mediaProperties.Title + " " + mediaSession.ControlSession.GetPlaybackInfo().PlaybackStatus);
 #endif
-        // Any SMTC session may be the OBS-pinned source.
-        PublishObsMediaState();
+        // Only the selected OBS source can change the published metadata.
+        if (GetObsMediaSession() is { } obsSession &&
+            string.Equals(obsSession.Id, mediaSession.Id, StringComparison.Ordinal))
+            PublishObsMediaState();
 
         var currentActiveSession = GetActiveMediaSession();
         if (currentActiveSession == null)
@@ -1000,7 +1058,12 @@ public partial class MainWindow : MicaWindow
 
     private void MediaManager_OnAnyTimelinePropertyChanged(MediaSession mediaSession, GlobalSystemMediaTransportControlsSessionTimelineProperties timelineProperties)
     {
-        PublishObsMediaState();
+        // Timeline events are frequent. Ignore unrelated players and publish only
+        // the small timeline delta for the OBS-selected source; metadata and cover
+        // art are refreshed by media-property/playback events instead.
+        if (GetObsMediaSession() is { } obsSession &&
+            string.Equals(obsSession.Id, mediaSession.Id, StringComparison.Ordinal))
+            PublishObsTimelineState(obsSession, timelineProperties);
 
         if (GetActiveMediaSession() is not { } session || session.Id != mediaSession.Id) return;
 
