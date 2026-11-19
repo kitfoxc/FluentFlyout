@@ -33,6 +33,8 @@ public sealed record NowPlayingInfo
     /// <summary>Opaque identifier used by the local cover-art endpoint.</summary>
     public string? CoverId { get; init; }
 
+    public string? CoverUrl { get; init; }
+
     public bool IsAvailable { get; init; }
 
     public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
