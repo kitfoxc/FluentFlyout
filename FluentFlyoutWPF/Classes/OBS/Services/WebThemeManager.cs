@@ -6,8 +6,8 @@ using System.IO;
 namespace FluentFlyoutWPF.Classes.OBS.Services;
 
 /// <summary>
-/// Discovers user-authored HTML templates in the current user's Roaming profile.
-/// Templates are intentionally self-contained HTML files in the first iteration.
+/// Discovers HTML themes in the user's Roaming profile. Each immediate
+/// subfolder is a theme category and may contain one or more HTML templates.
 /// </summary>
 public sealed class WebThemeManager
 {
@@ -29,39 +29,66 @@ public sealed class WebThemeManager
 
     public string DefaultThemeFileName => "default.html";
 
+    /// <summary>
+    /// Returns paths relative to ThemeDirectory, using forward slashes so the
+    /// persisted selection is portable and independent of the current OS.
+    /// </summary>
     public IReadOnlyList<string> GetAvailableThemes()
     {
         EnsureDefaultTheme();
 
-        return Directory.EnumerateFiles(ThemeDirectory, "*.html", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Cast<string>()
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+        return Directory.EnumerateFiles(ThemeDirectory, "*.html", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(ThemeDirectory, path).Replace(Path.DirectorySeparatorChar, '/'))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
-    public string ResolveThemePath(string? fileName)
+    public string ResolveThemePath(string? relativeFileName)
     {
         EnsureDefaultTheme();
 
-        var safeFileName = NormalizeFileName(fileName);
-        var candidate = Path.GetFullPath(Path.Combine(ThemeDirectory, safeFileName));
-        var root = Path.GetFullPath(ThemeDirectory) + Path.DirectorySeparatorChar;
-
-        if (!candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("The selected WebSocket theme path is invalid.");
-
-        if (!File.Exists(candidate))
-            candidate = Path.Combine(ThemeDirectory, DefaultThemeFileName);
+        var candidate = ResolveSafePath(relativeFileName);
+        if (!candidate.EndsWith(".html", StringComparison.OrdinalIgnoreCase) || !File.Exists(candidate))
+            return Path.Combine(ThemeDirectory, DefaultThemeFileName);
 
         return candidate;
     }
 
-    public string ReadTheme(string? fileName)
+    /// <summary>Returns the folder containing the selected HTML file.</summary>
+    public string ResolveThemeAssetPath(string? relativeAssetPath, string? selectedThemeFileName)
     {
-        var path = ResolveThemePath(fileName);
-        return File.ReadAllText(path);
+        var themePath = ResolveThemePath(selectedThemeFileName);
+        var themeFolder = Path.GetDirectoryName(themePath) ?? ThemeDirectory;
+        var normalizedAssetPath = (relativeAssetPath ?? string.Empty)
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+        var candidate = Path.GetFullPath(Path.Combine(themeFolder, normalizedAssetPath));
+        var folderPrefix = Path.GetFullPath(themeFolder) + Path.DirectorySeparatorChar;
+
+        if (!candidate.StartsWith(folderPrefix, StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(candidate))
+            throw new FileNotFoundException("The requested theme asset was not found.");
+
+        return candidate;
+    }
+
+    public string ReadTheme(string? relativeFileName)
+    {
+        var themePath = ResolveThemePath(relativeFileName);
+        var html = File.ReadAllText(themePath);
+
+        // Resolve relative CSS, JS and image references against the selected
+        // theme's folder, served through the guarded /theme-assets/ endpoint.
+        const string baseTag = "<base href=\"/theme-assets/\">";
+        if (html.Contains("<head", StringComparison.OrdinalIgnoreCase))
+        {
+            var headEnd = html.IndexOf('>', html.IndexOf("<head", StringComparison.OrdinalIgnoreCase));
+            if (headEnd >= 0)
+                return html.Insert(headEnd + 1, baseTag);
+        }
+
+        return baseTag + html;
     }
 
     public void OpenThemeDirectory()
@@ -74,17 +101,26 @@ public sealed class WebThemeManager
         });
     }
 
-    private static string NormalizeFileName(string? fileName)
+    private string ResolveSafePath(string? relativePath)
     {
-        if (string.IsNullOrWhiteSpace(fileName))
-            return "default.html";
+        if (string.IsNullOrWhiteSpace(relativePath))
+            relativePath = DefaultThemeFileName;
 
-        var name = Path.GetFileName(fileName.Trim());
-        if (!string.Equals(name, fileName.Trim(), StringComparison.Ordinal) ||
-            !name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
-            return "default.html";
+        var normalized = relativePath.Trim()
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
 
-        return name;
+        if (Path.IsPathRooted(normalized))
+            throw new InvalidOperationException("The selected WebSocket theme path is invalid.");
+
+        var root = Path.GetFullPath(ThemeDirectory);
+        var candidate = Path.GetFullPath(Path.Combine(root, normalized));
+        var prefix = root + Path.DirectorySeparatorChar;
+
+        if (!candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The selected WebSocket theme path is invalid.");
+
+        return candidate;
     }
 
     private void EnsureDefaultTheme()
