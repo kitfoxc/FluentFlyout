@@ -1,37 +1,63 @@
-# OBS Now Playing — M1 foundation
+# OBS Now Playing — implementation notes
 
-This milestone introduces the normalized media-state contract without moving
-the existing SMTC event handlers out of `MainWindow`.
+## M1 — normalized media state
 
-## Added components
-
-- `NowPlayingInfo`: immutable DTO shared by the desktop UI and future OBS API.
+- `NowPlayingInfo`: immutable DTO shared by the desktop UI and external clients.
 - `MediaStateStore`: thread-safe latest snapshot, monotonically increasing
-  sequence number, and change notification for future WebSocket subscribers.
-- `MediaSessionSelector`: generic selector that preserves the existing
-  pinned-session → focused-session → first-valid-session behavior while
-  allowing the existing `MainWindow.IsSessionAllowed` predicate to be reused.
+  sequence number, and change notification.
+- `MediaSessionSelector`: isolated pinned → focused → first-allowed selector.
+- Existing `MainWindow` SMTC callbacks publish media-property, playback,
+  timeline and session-closed state without moving the existing Flyout,
+  Taskbar Widget, seek bar or Next Up behavior.
 
-## Current integration
+## M2 — local HTTP and WebSocket transport
 
-`MainWindow` owns one `MediaStateStore` and publishes normalized snapshots
-from the existing SMTC media-property, playback-state, timeline, and
-session-closed callbacks. The existing media manager remains the sole SMTC
-owner. Existing UI-specific side effects (Next Up, Taskbar Widget, Flyout and
-seek bar) remain in `MainWindow`.
+- `ObsWebServer`: Kestrel server bound only to `127.0.0.1:17832`.
+- `WebSocketHub`: manages Browser Source clients and serializes socket sends.
+- Per-process random token protects state, WebSocket and cover-art endpoints.
+- Browser requests carrying an Origin header are restricted to localhost on
+  the configured port.
+- `CoverArtStore`: bounded in-memory PNG cache populated from the existing
+  SMTC thumbnail and BitmapHelper pipeline.
+- `Web/`: transparent Fluent-inspired Browser Source page, CSS and JS client.
+- The page receives an immediate state snapshot, processes sequence numbers,
+  extrapolates playback progress locally and reconnects with exponential backoff.
+- Web assets are copied to the application output directory.
+- Server startup and shutdown are tied to the MainWindow lifetime.
 
-`MediaSessionSelector` is available as an isolated selection helper; the
-current active-session selection path has deliberately not been replaced yet.
-The OBS transport can consume `MediaStateStore.Current` for initial state and
-subscribe to `MediaStateStore.Changed` for subsequent updates.
+### Browser Source
 
-## Deliberate non-goals for M1
+`http://127.0.0.1:17832/`
 
-- No new NuGet dependencies.
-- No changes to the existing media-manager lifecycle.
-- No HTTP or WebSocket listener yet.
-- No playback-control commands.
-- No changes to existing settings serialization.
+Suggested initial size: 520 × 150.
 
-This keeps the first change isolated and avoids changing the current desktop
-media behavior before the OBS transport is implemented.
+### HTTP endpoints
+
+- `GET /api/health`
+- `GET /api/config` (same-origin configuration/token bootstrap)
+- `GET /api/now-playing?token=...`
+- `GET /api/covers/{coverId}?token=...`
+
+### WebSocket
+
+`ws://127.0.0.1:17832/ws?token=...`
+
+Protocol version: `1.0`.
+
+The server sends `state.snapshot` on connect and `media.changed` for
+subsequent SMTC updates. The WebSocket endpoint is read-only; playback
+commands are deliberately excluded from this milestone.
+
+## Build validation
+
+A Windows GitHub Actions workflow was added at
+`.github/workflows/obs-now-playing-build.yml`. It restores the solution and
+builds the WPF project on pushes to the OBS feature branch. A successful local
+or CI build is still required before treating the implementation as verified.
+
+## M3 follow-up
+
+- Add OBS integration settings and configurable port/enable switch.
+- Exercise multiple simultaneous Browser Sources and reconnect behavior.
+- Validate thumbnail cache eviction and player-specific SMTC behavior.
+- Add tests for protocol serialization and session selection.
