@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using FluentFlyout.Classes.Settings;
+using FluentFlyout.Classes.Utils;
 using FluentFlyoutWPF.Classes.Utils;
+using FluentFlyoutWPF.Classes;
 using Microsoft.Win32;
 using NLog;
 using System.Diagnostics;

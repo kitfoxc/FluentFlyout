@@ -161,6 +161,11 @@ public partial class HomePage : Page
         SettingsWindow.NavigateToPage(typeof(TaskbarVisualizerPage));
     }
 
+    private void WebSocket_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        SettingsWindow.NavigateToPage(typeof(WebSocketPage));
+    }
+
     private void System_Click(object sender, System.Windows.RoutedEventArgs e)
     {
         SettingsWindow.NavigateToPage(typeof(SystemPage));

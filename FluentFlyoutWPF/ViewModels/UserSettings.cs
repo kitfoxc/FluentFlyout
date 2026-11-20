@@ -10,6 +10,7 @@ using FluentFlyoutWPF.Classes;
 using FluentFlyoutWPF.Models;
 using FluentFlyoutWPF.Windows;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Xml.Serialization;
@@ -751,6 +752,22 @@ public partial class UserSettings : ObservableObject
     [ObservableProperty]
     public partial bool AnonymousTelemetryAllowed { get; set; }
 
+    /// <summary>Enable the local OBS Now Playing HTTP and WebSocket service.</summary>
+    [ObservableProperty]
+    public partial bool ObsNowPlayingEnabled { get; set; }
+
+    /// <summary>Loopback HTTP port used by OBS Browser Sources.</summary>
+    [ObservableProperty]
+    public partial int ObsNowPlayingPort { get; set; }
+
+    /// <summary>Optional SMTC session ID pinned exclusively for WebSocket output.</summary>
+    [ObservableProperty]
+    public partial string ObsPinnedSessionId { get; set; }
+
+    /// <summary>Selected HTML template filename from the Roaming web-theme directory.</summary>
+    [ObservableProperty]
+    public partial string WebSocketThemeFileName { get; set; }
+
     [XmlIgnore]
     private bool _initializing = true;
 
@@ -848,6 +865,10 @@ public partial class UserSettings : ObservableObject
         LegacyTaskbarWidthEnabled = false;
         Uuid = Guid.NewGuid();
         AnonymousTelemetryAllowed = true;
+        ObsNowPlayingEnabled = true;
+        ObsNowPlayingPort = 17832;
+        ObsPinnedSessionId = string.Empty;
+        WebSocketThemeFileName = "default";
         AllowedApps = [];
         BlockedApps = [];
 
@@ -908,7 +929,75 @@ public partial class UserSettings : ObservableObject
     /// </summary>
     internal void CompleteInitialization()
     {
+        NormalizeObsSettings();
         _initializing = false;
+    }
+
+    /// <summary>
+    /// XML deserialization bypasses property-change validation while the settings
+    /// object is initializing. Normalize OBS values here so imported and restored
+    /// settings cannot pass invalid values into server/theme constructors.
+    /// </summary>
+    private void NormalizeObsSettings()
+    {
+        if (ObsNowPlayingPort is < 1024 or > 65535)
+        {
+            Logger.Warn("Invalid OBS Now Playing port {0}; using default port {1}",
+                ObsNowPlayingPort, 17832);
+            ObsNowPlayingPort = 17832;
+        }
+
+        ObsPinnedSessionId = ObsPinnedSessionId?.Trim() ?? string.Empty;
+
+        if (string.Equals(WebSocketThemeFileName, "default.html", StringComparison.OrdinalIgnoreCase))
+        {
+            WebSocketThemeFileName = "default";
+        }
+        else if (!IsValidThemeFolderName(WebSocketThemeFileName))
+        {
+            Logger.Warn("Invalid OBS theme folder setting; using the default theme");
+            WebSocketThemeFileName = "default";
+        }
+        else
+        {
+            WebSocketThemeFileName = WebSocketThemeFileName.Trim();
+        }
+    }
+
+    private static bool IsValidThemeFolderName(string? folderName)
+    {
+        if (string.IsNullOrWhiteSpace(folderName))
+            return false;
+
+        var name = folderName.Trim();
+        return name is not "." and not ".."
+            && !Path.IsPathRooted(name)
+            && name.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, ':']) < 0;
+    }
+
+    partial void OnObsNowPlayingEnabledChanged(bool oldValue, bool newValue)
+    {
+        if (oldValue == newValue || _initializing) return;
+        ApplyObsNowPlayingSettings();
+    }
+
+    partial void OnObsNowPlayingPortChanged(int oldValue, int newValue)
+    {
+        if (oldValue == newValue || _initializing) return;
+
+        if (newValue is < 1024 or > 65535)
+        {
+            ObsNowPlayingPort = 17832;
+            return;
+        }
+
+        ApplyObsNowPlayingSettings();
+    }
+
+    private static void ApplyObsNowPlayingSettings()
+    {
+        if (Application.Current?.MainWindow is MainWindow mainWindow)
+            mainWindow.ApplyObsServerSettings();
     }
 
     partial void OnAppLanguageChanged(string oldValue, string newValue)
