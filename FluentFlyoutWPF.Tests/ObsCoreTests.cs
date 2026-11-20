@@ -86,6 +86,66 @@ public sealed class ObsCoreTests
         Assert.Equal(WebSocketState.Aborted, socket.State);
     }
 
+    [Fact]
+    public void WebThemeManager_RejectsTraversalAndDoesNotFollowThemeLinks()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "FluentFlyout.Tests", Guid.NewGuid().ToString("N"));
+        var webRoot = Path.Combine(root, "web");
+        var themeRoot = Path.Combine(root, "themes");
+        var externalRoot = Path.Combine(root, "external");
+
+        Directory.CreateDirectory(webRoot);
+        Directory.CreateDirectory(externalRoot);
+        File.WriteAllText(Path.Combine(webRoot, "index.html"), "<html>default</html>");
+        File.WriteAllText(Path.Combine(externalRoot, "secret.txt"), "outside");
+        var manager = new WebThemeManager(webRoot, themeRoot);
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(themeRoot, "Minimal"));
+            File.WriteAllText(Path.Combine(themeRoot, "Minimal", "index.html"), "<html>minimal</html>");
+
+            Assert.Throws<InvalidOperationException>(() =>
+                manager.ResolveThemeAssetPath("../external/secret.txt", "Minimal"));
+
+            var linkedTheme = Path.Combine(themeRoot, "Escape");
+            try
+            {
+                Directory.CreateSymbolicLink(linkedTheme, externalRoot);
+                Assert.DoesNotContain("Escape", manager.GetAvailableThemes());
+                Assert.Throws<InvalidOperationException>(() =>
+                    manager.ResolveThemeAssetPath("secret.txt", "Escape"));
+            }
+            catch (Exception ex) when (
+                ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+            {
+                // Some Windows environments do not grant symlink creation to the
+                // test process. Lexical traversal rejection is still asserted.
+            }
+
+            var linkedEntryFolder = Path.Combine(themeRoot, "LinkedEntry");
+            Directory.CreateDirectory(linkedEntryFolder);
+            try
+            {
+                File.CreateSymbolicLink(
+                    Path.Combine(linkedEntryFolder, "index.html"),
+                    Path.Combine(externalRoot, "secret.txt"));
+                Assert.Throws<InvalidOperationException>(() =>
+                    manager.ResolveThemePath("LinkedEntry"));
+            }
+            catch (Exception ex) when (
+                ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+            {
+                // See the symlink privilege note above.
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed record FakeSession(string Id);
 
     private sealed class BlockingWebSocket : WebSocket

@@ -20,5 +20,6 @@
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaStateStore.cs" Link="OBS\Services\MediaStateStore.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaSessionSelector.cs" Link="OBS\Services\MediaSessionSelector.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Server\WebSocketHub.cs" Link="OBS\Server\WebSocketHub.cs" />
+    <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\WebThemeManager.cs" Link="OBS\Services\WebThemeManager.cs" />
   </ItemGroup>
 </Project>

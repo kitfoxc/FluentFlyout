@@ -14,10 +14,10 @@ public sealed class WebThemeManager
 {
     private readonly string _webRoot;
 
-    public WebThemeManager(string? webRoot = null)
+    public WebThemeManager(string? webRoot = null, string? themeDirectory = null)
     {
         _webRoot = webRoot ?? Path.Combine(AppContext.BaseDirectory, "Web");
-        ThemeDirectory = Path.Combine(
+        ThemeDirectory = themeDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "FluentFlyout",
             "web-theme");
