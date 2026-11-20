@@ -16,6 +16,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\FluentFlyoutWPF\Classes\Utils\SmtcTimelineClock.cs" Link="Utils\SmtcTimelineClock.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Models\NowPlayingInfo.cs" Link="OBS\Models\NowPlayingInfo.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaStateStore.cs" Link="OBS\Services\MediaStateStore.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaSessionSelector.cs" Link="OBS\Services\MediaSessionSelector.cs" />
