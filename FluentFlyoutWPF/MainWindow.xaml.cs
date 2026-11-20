@@ -110,6 +110,13 @@ public partial class MainWindow : MicaWindow
         };
         _displayRefreshTimer.Tick += DisplayRefreshTimer_Tick;
 
+        // Initialize before media manager startup and keep the timer on the UI thread.
+        _positionTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(300)
+        };
+        _positionTimer.Tick += SeekbarUpdateUi;
+
         if (!singleton.WaitOne(TimeSpan.Zero, true)) // if another instance is already running, close this one
         {
             // Signal the existing instance to open settings
@@ -214,11 +221,6 @@ public partial class MainWindow : MicaWindow
         WM_SHELLHOOK = RegisterWindowMessage("SHELLHOOK");
         RegisterShellHookWindow(new WindowInteropHelper(this).Handle);
 
-        _positionTimer = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromMilliseconds(300)
-        };
-        _positionTimer.Tick += SeekbarUpdateUi;
         if (_seekBarEnabled && GetActiveMediaSession() is { } session)
         {
             try
@@ -1767,10 +1769,17 @@ public partial class MainWindow : MicaWindow
 
     private void HandlePlayBackState(GlobalSystemMediaTransportControlsSessionPlaybackStatus? status)
     {
-        if (status is null)
+        if (status is null || _isCleaningUp)
             return;
 
-        bool shouldRun = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => HandlePlayBackState(status));
+            return;
+        }
+
+        bool shouldRun = _seekBarEnabled &&
+            status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         if (shouldRun == _isActive)
             return;
 
