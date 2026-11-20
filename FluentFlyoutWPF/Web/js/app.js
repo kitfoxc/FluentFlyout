@@ -1,3 +1,10 @@
+import {
+  getReportedPosition,
+  hasForwardProgress,
+  isTimelineFresh,
+  pruneRecentSamples
+} from "./progress-utils.js";
+
 const elements = {
   widget: document.querySelector("#widget"),
   cover: document.querySelector("#cover"),
@@ -77,30 +84,10 @@ function getTrackKey(media) {
   return [media?.sessionId || "", media?.title || ""].join("\u001f");
 }
 
-function getTimelineAgeMs(media) {
-  const timestamp = Date.parse(media?.timelineLastUpdatedTime || "");
-  // Some SMTC providers leave LastUpdatedTime at DateTimeOffset.MinValue.
-  // Treat that sentinel as unavailable and fall back to event-arrival timing.
-  if (!Number.isFinite(timestamp) || timestamp < Date.UTC(2000, 0, 1)) return null;
-  return Date.now() - timestamp;
-}
-
 function hasFreshTimeline(media) {
-  const age = getTimelineAgeMs(media);
-  // Older themes/sources may not send this additive field. In that case,
-  // event arrival time remains the fallback freshness signal.
-  return age === null || (age >= -1000 && age <= STALE_TIMELINE_MS);
-}
-
-function getReportedPosition(media, fallback = 0) {
-  const rawPosition = media?.position;
-  if (rawPosition === null || rawPosition === undefined || rawPosition === "")
-    return Math.max(0, Number(fallback) || 0);
-
-  const position = Number(rawPosition);
-  return Number.isFinite(position) && position >= 0
-    ? position
-    : Math.max(0, Number(fallback) || 0);
+  // Older themes/sources may omit this additive timestamp. The helper treats
+  // that case as event-arrival freshness, preserving protocol 1.0 compatibility.
+  return isTimelineFresh(media, Date.now(), STALE_TIMELINE_MS);
 }
 
 function stopAnimation() {
@@ -332,25 +319,29 @@ function processCalibrationSample(position, now, media) {
   }
 
   calibrationSamples.push({ position, at: now });
-  calibrationSamples = calibrationSamples.filter(
-    sample => now - sample.at <= CALIBRATION_SAMPLE_WINDOW_MS
+  calibrationSamples = pruneRecentSamples(
+    calibrationSamples,
+    now,
+    CALIBRATION_SAMPLE_WINDOW_MS
   );
 
+  if (hasForwardProgress(
+    calibrationSamples,
+    CALIBRATION_MIN_SAMPLES,
+    CALIBRATION_MIN_SPAN_MS,
+    CALIBRATION_MIN_ADVANCE
+  )) {
+    startRunning(position, now);
+    return;
+  }
+
+  // A backwards movement during startup is likely a seek/reset, not proof
+  // that playback has begun. Restart the sample window at the new position.
   if (calibrationSamples.length >= CALIBRATION_MIN_SAMPLES) {
     const first = calibrationSamples[0];
     const latest = calibrationSamples[calibrationSamples.length - 1];
-    const span = latest.at - first.at;
-    const advance = latest.position - first.position;
-
-    if (span >= CALIBRATION_MIN_SPAN_MS && advance >= CALIBRATION_MIN_ADVANCE) {
-      startRunning(position, now);
-      return;
-    }
-
-    // A backwards movement during startup is likely a seek/reset, not proof
-    // that playback has begun. Restart the sample window at the new position.
-    if (advance < -0.25)
-      calibrationSamples = [{ position, at: now, fresh: true }];
+    if (latest.position - first.position < -0.25)
+      calibrationSamples = [{ position, at: now }];
   }
 
   if (now - calibrationStartedAt >= CALIBRATION_TIMEOUT_MS) {
@@ -365,17 +356,15 @@ function processStalledSample(position, now, media) {
   if (!hasFreshTimeline(media)) return;
 
   recoverySamples.push({ position, at: now });
-  recoverySamples = recoverySamples.filter(
-    sample => now - sample.at <= RECOVERY_SAMPLE_WINDOW_MS
+  recoverySamples = pruneRecentSamples(
+    recoverySamples,
+    now,
+    RECOVERY_SAMPLE_WINDOW_MS
   );
 
-  if (recoverySamples.length >= 2) {
-    const first = recoverySamples[0];
-    const latest = recoverySamples[recoverySamples.length - 1];
-    if (latest.position - first.position >= 0.12 && latest.at - first.at >= 200) {
-      startRunning(position, now, true);
-      return;
-    }
+  if (hasForwardProgress(recoverySamples, 2, 200, 0.12)) {
+    startRunning(position, now, true);
+    return;
   }
 
   lastPositionSample = position;
