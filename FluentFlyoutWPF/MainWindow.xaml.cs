@@ -46,6 +46,9 @@ public partial class MainWindow : MicaWindow
     private readonly SemaphoreSlim _obsServerGate = new(1, 1);
     private ObsWebServer? _obsWebServer;
     private int _cleanupStarted;
+    private int _shutdownRequested;
+    private readonly CancellationTokenSource _shutdownCts = new();
+    private Task? _settingsListenerTask;
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -134,22 +137,31 @@ public partial class MainWindow : MicaWindow
         Logger.Info("Starting FluentFlyout MainWindow");
 
         // in the existing instance, listen for the signal to open settings
-        Task.Run(() =>
+        _settingsListenerTask = Task.Run(() =>
         {
             try
             {
                 using (EventWaitHandle settingsEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "FluentFlyout_OpenSettings"))
                 {
-                    while (true)
+                    WaitHandle[] waitHandles = { settingsEvent, _shutdownCts.Token.WaitHandle };
+                    while (WaitHandle.WaitAny(waitHandles) == 0)
                     {
-                        settingsEvent.WaitOne();
-                        Application.Current.Dispatcher.Invoke(() => { SettingsWindow.ShowInstance(); });
+                        if (_isCleaningUp)
+                            return;
+
+                        // Never block the listener thread waiting for the UI dispatcher during shutdown.
+                        Application.Current.Dispatcher.BeginInvoke(() =>
+                        {
+                            if (!_isCleaningUp && !Application.Current.Dispatcher.HasShutdownStarted)
+                                SettingsWindow.ShowInstance();
+                        });
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Settings event listener error");
+                if (!_isCleaningUp)
+                    Logger.Error(ex, "Settings event listener error");
             }
         });
 
@@ -1746,7 +1758,10 @@ public partial class MainWindow : MicaWindow
                 return;
 
             if (_obsWebServer.IsRunning)
-                await _obsWebServer.StopAsync().ConfigureAwait(false);
+                await _obsWebServer.StopAsync(_shutdownCts.Token).ConfigureAwait(false);
+
+            if (_isCleaningUp || _shutdownCts.IsCancellationRequested)
+                return;
 
             if (!SettingsManager.Current.ObsNowPlayingEnabled)
             {
@@ -1757,7 +1772,11 @@ public partial class MainWindow : MicaWindow
             if (_obsWebServer.Port != SettingsManager.Current.ObsNowPlayingPort)
                 _obsWebServer.ReconfigurePort(SettingsManager.Current.ObsNowPlayingPort);
 
-            await _obsWebServer.StartAsync().ConfigureAwait(false);
+            await _obsWebServer.StartAsync(_shutdownCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_shutdownCts.IsCancellationRequested)
+        {
+            // Application shutdown cancels any in-flight Kestrel start/stop operation.
         }
         catch (Exception ex)
         {
@@ -1769,124 +1788,201 @@ public partial class MainWindow : MicaWindow
         }
     }
 
-    private void CleanupResources()
+    private async Task CleanupResourcesAsync()
     {
-        // try saving settings before exiting if window is still open
-        // disabled because it caused too many issues (race conditions, shutdown exceptions), could look into another time
-        //try
-        //{
-        //    SettingsManager.SaveSettings();
-        //    Logger.Info("Settings saved successfully on cleanup");
-        //}
-        //catch (Exception ex)
-        //{
-        //    Logger.Error(ex, "Error while saving settings on cleanup");
-        //}
-
-        // should be handled automatically on app exit but just in case
         if (Interlocked.Exchange(ref _cleanupStarted, 1) != 0)
+            return;
+
+        _isCleaningUp = true;
+        _shutdownCts.Cancel();
+
+        try
+        {
+            // Let any in-flight server start/reconfigure operation observe cancellation before
+            // acquiring the gate. Waiting synchronously here used to block the WPF dispatcher
+            // while Kestrel was stopping, which could leave the Windows taskbar unresponsive.
+            bool serverGateAcquired = false;
+            try
+            {
+                serverGateAcquired = await _obsServerGate.WaitAsync(TimeSpan.FromSeconds(5));
+                if (!serverGateAcquired)
+                {
+                    Logger.Warn("Timed out waiting for the OBS server operation to finish during shutdown");
+                }
+                else if (_obsWebServer != null)
+                {
+                    using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await _obsWebServer.StopAsync(stopTimeout.Token);
+                }
+            }
+            catch (OperationCanceledException ex)
+            {
+                Logger.Warn(ex, "OBS WebSocket server shutdown was cancelled or timed out");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "Failed to stop OBS WebSocket server cleanly");
+            }
+            finally
+            {
+                if (serverGateAcquired)
+                    _obsServerGate.Release();
+            }
+
+            // Wake the single-instance settings listener and allow it to leave its wait loop.
+            if (_settingsListenerTask != null)
+            {
+                try
+                {
+                    await _settingsListenerTask.WaitAsync(TimeSpan.FromSeconds(1));
+                }
+                catch (TimeoutException ex)
+                {
+                    Logger.Warn(ex, "Settings listener did not stop within the shutdown timeout");
+                }
+            }
+
+            TryCleanup(() =>
+            {
+                _displayRefreshTimer.Stop();
+                _displayRefreshTimer.Tick -= DisplayRefreshTimer_Tick;
+            }, "display refresh timer");
+
+            TryCleanup(() =>
+            {
+                mediaManager.OnAnyMediaPropertyChanged -= MediaManager_OnAnyMediaPropertyChanged;
+                mediaManager.OnAnyPlaybackStateChanged -= CurrentSession_OnPlaybackStateChanged;
+                mediaManager.OnAnyTimelinePropertyChanged -= MediaManager_OnAnyTimelinePropertyChanged;
+                mediaManager.OnAnySessionClosed -= MediaManager_OnAnySessionClosed;
+            }, "media manager event subscriptions");
+
+            TryCleanup(DisposeHeadsetControls, "headset controls");
+
+            TryCleanup(() =>
+            {
+                _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                _positionTimer?.Dispose();
+                cts?.Cancel();
+                cts?.Dispose();
+            }, "media timers");
+
+            // Audio capture teardown may block inside the native audio stack. Keep it off the
+            // dispatcher so Windows shell interactions remain responsive while the app exits.
+            try
+            {
+                await Task.Run(TaskbarVisualizerControl.DisposeVisualizer).WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch (TimeoutException ex)
+            {
+                Logger.Warn(ex, "Taskbar visualizer teardown exceeded the shutdown timeout");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "Failed to dispose taskbar visualizer");
+            }
+
+            TryCleanup(() =>
+            {
+                if (_hookId != IntPtr.Zero)
+                {
+                    UnhookWindowsHookEx(_hookId);
+                    _hookId = IntPtr.Zero;
+                }
+            }, "keyboard hook");
+
+            TryCleanup(() => DeregisterShellHookWindow(new WindowInteropHelper(this).Handle), "shell hook");
+
+            TryCleanup(() => nIcon.Visibility = Visibility.Collapsed, "tray icon");
+
+            TryCleanup(() =>
+            {
+                if (lockWindow?.IsLoaded == true)
+                    lockWindow.Close();
+            }, "lock window");
+
+            TryCleanup(() =>
+            {
+                if (nextUpWindow?.IsLoaded == true)
+                    nextUpWindow.Close();
+            }, "Next Up window");
+
+            TryCleanup(() =>
+            {
+                if (taskbarWindow?.IsLoaded == true)
+                    taskbarWindow.Close();
+            }, "taskbar widget window");
+
+            TryCleanup(() =>
+            {
+                if (volumeMixerWindow?.IsLoaded == true)
+                    volumeMixerWindow.Close();
+            }, "volume mixer window");
+
+            TryCleanup(VolumeMixerWindow.ShowVolumeOsd, "native volume OSD restoration");
+            TryCleanup(() => singleton?.Dispose(), "single-instance mutex");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Unexpected error during application cleanup");
+        }
+        finally
+        {
+            NLog.LogManager.Shutdown();
+        }
+    }
+
+    private static void TryCleanup(Action cleanup, string resourceName)
+    {
+        try
+        {
+            cleanup();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn(ex, "Failed to clean up {0}", resourceName);
+        }
+    }
+
+    private async Task ShutdownApplicationAsync()
+    {
+        if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0)
             return;
 
         try
         {
-            _isCleaningUp = true;
-            _obsServerGate.Wait();
-            try
-            {
-                _obsWebServer?.StopAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn(ex, "Failed to stop WebSocket server cleanly");
-            }
-            finally
-            {
-                _obsServerGate.Release();
-            }
-
-            _displayRefreshTimer.Stop();
-            _displayRefreshTimer.Tick -= DisplayRefreshTimer_Tick;
-
-            // unsubscribe from events
-            mediaManager.OnAnyMediaPropertyChanged -= MediaManager_OnAnyMediaPropertyChanged;
-            mediaManager.OnAnyPlaybackStateChanged -= CurrentSession_OnPlaybackStateChanged;
-            mediaManager.OnAnyTimelinePropertyChanged -= MediaManager_OnAnyTimelinePropertyChanged;
-            mediaManager.OnAnySessionClosed -= MediaManager_OnAnySessionClosed;
-
-            DisposeHeadsetControls();
-
-            // dispose managed resources
-            _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-            _positionTimer?.Dispose();
-            cts?.Cancel();
-            cts?.Dispose();
-
-            TaskbarVisualizerControl.DisposeVisualizer();
-
-            // unhook hooks
-            if (_hookId != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(_hookId);
-                _hookId = IntPtr.Zero;
-            }
-
-            DeregisterShellHookWindow(new WindowInteropHelper(this).Handle);
-
-            // clean up other resources
-            if (lockWindow?.IsLoaded == true)
-                lockWindow.Close();
-
-            if (nextUpWindow?.IsLoaded == true)
-                nextUpWindow.Close();
-
-            if (taskbarWindow?.IsLoaded == true)
-                taskbarWindow.Close();
-
-            if (volumeMixerWindow?.IsLoaded == true)
-                volumeMixerWindow.Close();
-
-            // restore native volume OSD
-            VolumeMixerWindow.ShowVolumeOsd();
-
-            // dispose mutex
-            singleton?.Dispose();
-
-            // flush and close NLog
-            NLog.LogManager.Shutdown();
-        }
-        catch (ObjectDisposedException)
-        {
-            // harmless shutdown exceptions
-        }
-    }
-
-    protected override void OnClosed(EventArgs e)
-    {
-        try
-        {
-            CleanupResources();
-        }
-        finally
-        {
-            base.OnClosed(e);
-        }
-    }
-
-    private void MicaWindow_MouseEnter(object sender, MouseEventArgs e) // keep the flyout open when mouse is over
-    {
-        ShowMediaFlyout();
-    }
-
-    private void NotifyIconQuit_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            CleanupResources();
+            await CleanupResourcesAsync();
         }
         finally
         {
             Application.Current.Shutdown();
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+
+        // If the window is closed through a path other than the tray menu, still perform
+        // asynchronous cleanup before explicitly shutting down the OnExplicitShutdown app.
+        if (Interlocked.CompareExchange(ref _shutdownRequested, 1, 0) == 0)
+            _ = CompleteShutdownAfterWindowClosedAsync();
+    }
+
+    private async Task CompleteShutdownAfterWindowClosedAsync()
+    {
+        try
+        {
+            await CleanupResourcesAsync();
+        }
+        finally
+        {
+            Application.Current.Shutdown();
+        }
+    }
+
+    private async void NotifyIconQuit_Click(object sender, RoutedEventArgs e)
+    {
+        await ShutdownApplicationAsync();
     }
 
     private async Task<bool> WaitForExplorerReadyAsync(int timeoutMs = 60000)
