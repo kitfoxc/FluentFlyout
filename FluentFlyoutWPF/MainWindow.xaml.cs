@@ -1083,6 +1083,9 @@ public partial class MainWindow : MicaWindow
 
     private void MediaManager_OnAnyTimelinePropertyChanged(MediaSession mediaSession, GlobalSystemMediaTransportControlsSessionTimelineProperties timelineProperties)
     {
+        if (_isCleaningUp)
+            return;
+
         // Keep the shared monotonic clock updated even when the flyout is hidden.
         try
         {
@@ -1105,6 +1108,9 @@ public partial class MainWindow : MicaWindow
 
         // Never synchronously wait for the UI thread from an SMTC callback. In
         // particular, shutdown must be able to drain callbacks without deadlocking.
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            return;
+
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (_isCleaningUp)
@@ -1134,6 +1140,7 @@ public partial class MainWindow : MicaWindow
 
         UpdateTaskbar();
         PublishObsMediaState();
+        HandlePlayBackState(GetActiveMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
     }
 
     private static IntPtr SetHook(LowLevelKeyboardProc proc) // set the keyboard hook
@@ -1753,10 +1760,20 @@ public partial class MainWindow : MicaWindow
             ? GetObsMediaSession()
             : null;
 
-        bool activeIsPlaying = activeSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
-            == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-        bool obsIsPlaying = obsSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
-            == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        bool activeIsPlaying;
+        bool obsIsPlaying;
+        try
+        {
+            activeIsPlaying = activeSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
+                == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            obsIsPlaying = obsSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
+                == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug(ex, "Unable to read SMTC playback state during timeline polling");
+            return;
+        }
 
         bool updateNativeSeekbar = _seekBarEnabled && IsVisible && !_isHiding && !_isDragging &&
             activeIsPlaying;
@@ -1915,7 +1932,7 @@ public partial class MainWindow : MicaWindow
         finally
         {
             _obsServerGate.Release();
-            if (!_isCleaningUp && !Dispatcher.HasShutdownStarted)
+            if (!_isCleaningUp && !Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
             {
                 Dispatcher.BeginInvoke(new Action(() =>
                     HandlePlayBackState(GetActiveMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus)));
