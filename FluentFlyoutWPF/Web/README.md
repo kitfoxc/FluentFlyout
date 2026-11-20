@@ -103,11 +103,22 @@ restarts.
 ## Runtime note
 
 The current implementation uses the `Microsoft.AspNetCore.App` shared
-framework for Kestrel. Development machines with the .NET 10 SDK have this
-framework available. Before distributing a framework-dependent build, ensure
-the ASP.NET Core 10 Runtime is installed alongside the .NET Desktop Runtime,
-or configure the release packaging as self-contained. This packaging decision
-is tracked for the next milestone.
+framework for Kestrel. A framework-dependent installation therefore needs both
+the .NET 10 Desktop Runtime and the ASP.NET Core 10 Runtime. The MSIX manifest
+does not currently declare an ASP.NET Core framework package, so do not assume
+that installing the Desktop Runtime alone is sufficient.
+
+To verify a machine's installed frameworks, run:
+
+```powershell
+dotnet --list-runtimes
+```
+
+The output should include `Microsoft.WindowsDesktop.App 10.0.x` and
+`Microsoft.AspNetCore.App 10.0.x`. Development machines with the .NET 10 SDK
+normally have the required shared frameworks. The release packaging decision
+(self-contained deployment versus an explicit ASP.NET Core runtime prerequisite)
+remains open until an actual MSIX install/launch test is completed.
 
 
 ## WebSocket HTML themes

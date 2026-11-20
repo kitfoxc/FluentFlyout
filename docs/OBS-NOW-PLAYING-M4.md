@@ -65,7 +65,7 @@ Scope: stability, performance, configuration validation, and theme-resource safe
 |---|---|---|---|
 | `.github/workflows/obs-now-playing-build.yml` | Run Node and .NET service tests, then build Debug and Release for x64/ARM64 | Browser and service regressions are caught before packaging | All tests and four architecture/configuration builds succeed |
 | `FluentFlyoutWPF/Web/js/progress-utils.js` and `progress-utils.test.mjs` | Extract and test pure position/freshness/sample-window helpers | Zero, stale timestamps, low-frequency calibration, and slow recovery are deterministic | `node --test` passes in CI |
-| `.github/workflows/build-msix.yml` and packaging configuration | Verify ASP.NET Core runtime availability in the packaged app | Packaged app starts even when the machine only has the declared prerequisite runtimes | Install and launch packaged x64 app; verify WebSocket health endpoint |
+| `.github/workflows/build-msix.yml`, `Package.appxmanifest`, and `FluentFlyoutWPF/Web/README.md` | Make the ASP.NET Core 10 shared-framework prerequisite explicit; decide self-contained packaging only after install testing | Users and release maintainers can verify the runtime dependency instead of assuming Desktop Runtime is sufficient | `dotnet --list-runtimes` shows WindowsDesktop.App and AspNetCore.App 10.0; install and launch MSIX and verify `/api/health` |
 | Release matrix | Verify x64 and ARM64 compatibility | Both supported architectures resolve required runtime assets | Both architecture builds succeed |
 
 ## Implementation status
