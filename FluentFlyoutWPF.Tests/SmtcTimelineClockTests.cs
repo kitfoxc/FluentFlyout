@@ -76,6 +76,46 @@ public sealed class SmtcTimelineClockTests
     }
 
     [Fact]
+    public void MissingTimelinePosition_UsesPlaybackStateFallbackAfterGracePeriod()
+    {
+        var clock = new SmtcTimelineClock();
+        clock.Observe("player", Sec(0), Sec(60), T0, true, Ticks(0));
+
+        Assert.Equal(0, clock.Estimate("player", Ticks(1))!.Value.TotalSeconds, 3);
+        Assert.Equal(0.5, clock.Estimate("player", Ticks(2))!.Value.TotalSeconds, 3);
+        Assert.Equal(3.5, clock.Estimate("player", Ticks(5))!.Value.TotalSeconds, 3);
+        Assert.Equal(1000, clock.RemainingProjectionMilliseconds("player", Ticks(5)));
+    }
+
+    [Fact]
+    public void NonSeekableSource_WithUnchangedTimestampedPosition_ContinuesFallbackClock()
+    {
+        var clock = new SmtcTimelineClock();
+        clock.Observe(
+            "player", Sec(0), Sec(60), T0, true,
+            Ticks(0), hasReliableTimeline: false);
+        clock.Observe(
+            "player", Sec(0), Sec(60), T0.AddSeconds(1), true,
+            Ticks(1), hasReliableTimeline: false);
+
+        Assert.Equal(0.5, clock.Estimate("player", Ticks(2))!.Value.TotalSeconds, 3);
+    }
+
+    [Fact]
+    public void MissingTimelinePosition_FallbackFreezesAtPredictedPausePoint()
+    {
+        var clock = new SmtcTimelineClock();
+        clock.Observe(
+            "player", Sec(0), Sec(60), T0, true,
+            Ticks(0), hasReliableTimeline: false);
+        clock.Observe(
+            "player", Sec(0), Sec(60), T0, false,
+            Ticks(4), hasReliableTimeline: false);
+
+        Assert.Equal(2.5, clock.Estimate("player", Ticks(20))!.Value.TotalSeconds, 3);
+    }
+
+    [Fact]
     public void SessionsAreIndependentAndRemovalClearsTheirState()
     {
         var clock = new SmtcTimelineClock();
