@@ -1980,6 +1980,11 @@ public partial class MainWindow : MicaWindow
         }
     }
 
+    private void MicaWindow_MouseEnter(object sender, MouseEventArgs e) // keep the flyout open when mouse is over
+    {
+        ShowMediaFlyout();
+    }
+
     private async void NotifyIconQuit_Click(object sender, RoutedEventArgs e)
     {
         await ShutdownApplicationAsync();
