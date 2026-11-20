@@ -756,6 +756,12 @@ public partial class UserSettings : ObservableObject
     [ObservableProperty]
     public partial bool ObsNowPlayingEnabled { get; set; }
 
+    /// <summary>
+    /// Records that the user has explicitly configured the optional OBS service.
+    /// Used to migrate older settings where the service was implicitly enabled by default.
+    /// </summary>
+    public bool ObsNowPlayingPreferenceConfigured { get; set; }
+
     /// <summary>Loopback HTTP port used by OBS Browser Sources.</summary>
     [ObservableProperty]
     public partial int ObsNowPlayingPort { get; set; }
@@ -865,7 +871,8 @@ public partial class UserSettings : ObservableObject
         LegacyTaskbarWidthEnabled = false;
         Uuid = Guid.NewGuid();
         AnonymousTelemetryAllowed = true;
-        ObsNowPlayingEnabled = true;
+        ObsNowPlayingEnabled = false;
+        ObsNowPlayingPreferenceConfigured = false;
         ObsNowPlayingPort = 17832;
         ObsPinnedSessionId = string.Empty;
         WebSocketThemeFileName = "default";
@@ -929,6 +936,15 @@ public partial class UserSettings : ObservableObject
     /// </summary>
     internal void CompleteInitialization()
     {
+        // Older builds enabled the local OBS service implicitly. If the marker is absent,
+        // migrate once to the opt-in default, including settings files that persisted true
+        // only because of that old default.
+        if (!ObsNowPlayingPreferenceConfigured)
+        {
+            ObsNowPlayingEnabled = false;
+            ObsNowPlayingPreferenceConfigured = true;
+        }
+
         NormalizeObsSettings();
         _initializing = false;
     }

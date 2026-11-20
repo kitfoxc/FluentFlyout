@@ -21,6 +21,8 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
       - name: Test Browser progress helpers
         run: node --test FluentFlyoutWPF/Web/js/progress-utils.test.mjs
       - name: Restore solution
@@ -33,5 +35,27 @@ jobs:
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Debug --no-restore
       - name: Build WPF Release x64
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=x64
+      - name: Verify ASP.NET Core runtime is included in self-contained output
+        shell: pwsh
+        run: |
+          $outputRoot = "FluentFlyoutWPF/bin/Release"
+          $hostFxr = Get-ChildItem $outputRoot -Filter "hostfxr.dll" -Recurse | Select-Object -First 1
+          $aspNetCore = Get-ChildItem $outputRoot -Filter "Microsoft.AspNetCore.Hosting.dll" -Recurse | Select-Object -First 1
+          if (-not $hostFxr -or -not $aspNetCore) {
+            throw "Self-contained Release output is missing the .NET host or ASP.NET Core runtime."
+          }
       - name: Build WPF Release ARM64
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=ARM64
+      - name: Build unsigned MSIX package
+        shell: pwsh
+        run: |
+          $packageDir = "$env:RUNNER_TEMP\FluentFlyout-AppxPackages\"
+          msbuild FluentFlyoutMSIX\FluentFlyoutMSIX.wapproj /p:Configuration=Release /p:Platform=x64 /p:UapAppxPackageBuildMode=StoreUpload /p:AppxPackageDir="$packageDir" /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSIX packaging failed."
+          }
+          $packagedHostFxr = Get-ChildItem $packageDir -Filter "hostfxr.dll" -Recurse | Select-Object -First 1
+          $packagedAspNetCore = Get-ChildItem $packageDir -Filter "Microsoft.AspNetCore.Hosting.dll" -Recurse | Select-Object -First 1
+          if (-not $packagedHostFxr -or -not $packagedAspNetCore) {
+            throw "MSIX package test output is missing the self-contained ASP.NET Core runtime."
+          }

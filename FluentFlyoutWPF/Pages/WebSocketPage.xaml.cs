@@ -13,7 +13,7 @@ namespace FluentFlyoutWPF.Pages;
 
 public partial class WebSocketPage : Page
 {
-    private readonly WebThemeManager _themeManager = new();
+    private WebThemeManager? _themeManager;
     private bool _updatingMediaSources;
     private bool _updatingThemes;
 
@@ -23,7 +23,6 @@ public partial class WebSocketPage : Page
         DataContext = SettingsManager.Current;
         PopulateMediaSources();
         RefreshThemeList();
-        ThemeFolderText.Text = _themeManager.ThemeDirectory;
     }
 
     private void PopulateMediaSources()
@@ -89,8 +88,9 @@ public partial class WebSocketPage : Page
         _updatingThemes = true;
         try
         {
+            var themeManager = _themeManager ??= new WebThemeManager();
             var selected = preferredSelection ?? SettingsManager.Current.WebSocketThemeFileName;
-            var themes = _themeManager.GetAvailableThemes();
+            var themes = themeManager.GetAvailableThemes();
 
             ThemeComboBox.Items.Clear();
             foreach (var themeFolderName in themes)
@@ -100,7 +100,7 @@ public partial class WebSocketPage : Page
                     // A folder is the theme; keep the selector label concise.
                     Content = themeFolderName,
                     Tag = themeFolderName,
-                    ToolTip = Path.Combine(_themeManager.ThemeDirectory, themeFolderName)
+                    ToolTip = Path.Combine(themeManager.ThemeDirectory, themeFolderName)
                 });
             }
 
@@ -125,6 +125,17 @@ public partial class WebSocketPage : Page
                 SettingsManager.Current.WebSocketThemeFileName =
                     (ThemeComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "default";
             }
+
+            ThemeFolderText.Text = themeManager.ThemeDirectory;
+            ThemeComboBox.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            NLog.LogManager.GetCurrentClassLogger()
+                .Error(ex, "Failed to initialize the WebSocket theme directory");
+            ThemeComboBox.Items.Clear();
+            ThemeComboBox.IsEnabled = false;
+            ThemeFolderText.Text = $"Theme folder unavailable: {ex.Message}";
         }
         finally
         {
@@ -153,7 +164,7 @@ public partial class WebSocketPage : Page
     {
         try
         {
-            _themeManager.OpenThemeDirectory();
+            (_themeManager ??= new WebThemeManager()).OpenThemeDirectory();
         }
         catch (Exception ex)
         {
