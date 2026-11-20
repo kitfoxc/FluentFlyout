@@ -12,11 +12,21 @@ namespace FluentFlyoutWPF.Classes.OBS.Services;
 /// </summary>
 public sealed class WebThemeManager
 {
-    private readonly string _webRoot;
+    // Optional fixture source for tests. Production defaults are embedded at build time
+    // and expanded once into the user's writable web-theme/default directory.
+    private readonly string? _sourceWebRoot;
+
+    private static readonly (string FilePath, string ResourceName)[] DefaultRendererFiles =
+    [
+        ("index.html", "FluentFlyoutWPF.Web.Renderer.index.html"),
+        ("css/fluent.css", "FluentFlyoutWPF.Web.Renderer.css.fluent.css"),
+        ("js/app.js", "FluentFlyoutWPF.Web.Renderer.js.app.js"),
+        ("js/progress-utils.js", "FluentFlyoutWPF.Web.Renderer.js.progress-utils.js")
+    ];
 
     public WebThemeManager(string? webRoot = null, string? themeDirectory = null)
     {
-        _webRoot = webRoot ?? Path.Combine(AppContext.BaseDirectory, "Web");
+        _sourceWebRoot = webRoot;
         ThemeDirectory = themeDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "FluentFlyout",
@@ -166,27 +176,50 @@ public sealed class WebThemeManager
         Directory.CreateDirectory(defaultFolder);
         ThrowIfReparsePoint(defaultFolder);
 
-        var destination = Path.Combine(defaultFolder, "index.html");
-        if (File.Exists(destination))
+        // Preserve an existing or customized index.html. Old installations copied
+        // only this HTML; supply their missing CSS and JS without overwriting it.
+        var indexPath = Path.Combine(defaultFolder, "index.html");
+        if (!File.Exists(indexPath))
         {
-            EnsureNoReparsePoints(defaultFolder, destination);
-            return;
+            var legacyDefault = Path.Combine(ThemeDirectory, "default.html");
+            if (File.Exists(legacyDefault) && !IsReparsePoint(legacyDefault))
+                File.Copy(legacyDefault, indexPath);
         }
 
-        // Preserve a customized legacy root-level default.html when upgrading
-        // from the previous file-based theme layout, but never follow a link.
-        var legacyDefault = Path.Combine(ThemeDirectory, "default.html");
-        if (File.Exists(legacyDefault) && !IsReparsePoint(legacyDefault))
+        foreach (var (relativePath, resourceName) in DefaultRendererFiles)
         {
-            File.Copy(legacyDefault, destination);
-            return;
+            var destination = Path.Combine(defaultFolder,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var parent = Path.GetDirectoryName(destination)!;
+            Directory.CreateDirectory(parent);
+            EnsureNoReparsePoints(defaultFolder, parent);
+
+            if (File.Exists(destination))
+            {
+                EnsureNoReparsePoints(defaultFolder, destination);
+                continue;
+            }
+
+            // Never overwrite user changes. Official defaults are a first-run
+            // seed, not a synchronized or automatically upgraded resource set.
+            var source = _sourceWebRoot is null
+                ? null
+                : Path.Combine(_sourceWebRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (source is not null && File.Exists(source))
+            {
+                File.Copy(source, destination);
+                continue;
+            }
+
+            using var embedded = typeof(WebThemeManager).Assembly
+                .GetManifestResourceStream(resourceName)
+                ?? throw new FileNotFoundException(
+                    $"Built-in OBS renderer resource was not found: {resourceName}");
+            using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write);
+            embedded.CopyTo(output);
         }
-
-        var source = Path.Combine(_webRoot, "index.html");
-        if (!File.Exists(source))
-            throw new FileNotFoundException("The built-in WebSocket HTML template was not found.", source);
-
-        File.Copy(source, destination);
     }
 
     private static bool IsReparsePoint(string path)

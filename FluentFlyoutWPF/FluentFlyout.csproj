@@ -62,8 +62,14 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Renderer files are embedded only as first-run seeds for Roaming/web-theme/default.
+         They are not copied as loose MSIX content. The stable browser API stays bundled. -->
     <None Remove="Web\**\*" />
-    <Content Include="Web\**\*">
+    <EmbeddedResource Include="Web\index.html" LogicalName="FluentFlyoutWPF.Web.Renderer.index.html" />
+    <EmbeddedResource Include="Web\css\fluent.css" LogicalName="FluentFlyoutWPF.Web.Renderer.css.fluent.css" />
+    <EmbeddedResource Include="Web\js\app.js" LogicalName="FluentFlyoutWPF.Web.Renderer.js.app.js" />
+    <EmbeddedResource Include="Web\js\progress-utils.js" LogicalName="FluentFlyoutWPF.Web.Renderer.js.progress-utils.js" />
+    <Content Include="Web\js\fluentflyout-api.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="NLog.config">

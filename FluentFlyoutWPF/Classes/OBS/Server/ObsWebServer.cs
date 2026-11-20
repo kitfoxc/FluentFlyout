@@ -29,7 +29,7 @@ public sealed class ObsWebServer : IAsyncDisposable
     private readonly WebThemeManager _themeManager;
     private readonly Func<string> _selectedThemeFileName;
     private readonly WebSocketHub _hub = new();
-    private readonly string _webRoot;
+    private readonly string _browserApiPath;
     private readonly string _token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -60,7 +60,7 @@ public sealed class ObsWebServer : IAsyncDisposable
 
         Port = port;
         BaseUrl = $"http://127.0.0.1:{Port}";
-        _webRoot = Path.Combine(AppContext.BaseDirectory, "Web");
+        _browserApiPath = Path.Combine(AppContext.BaseDirectory, "Web", "js", "fluentflyout-api.js");
     }
 
     public int Port { get; private set; }
@@ -88,14 +88,13 @@ public sealed class ObsWebServer : IAsyncDisposable
         if (_started)
             return;
 
-        if (!Directory.Exists(_webRoot))
-            throw new DirectoryNotFoundException($"OBS web assets were not found: {_webRoot}");
+        if (!File.Exists(_browserApiPath))
+            throw new FileNotFoundException("The bundled OBS browser communication API was not found.", _browserApiPath);
 
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
             ApplicationName = typeof(ObsWebServer).Assembly.GetName().Name,
-            ContentRootPath = AppContext.BaseDirectory,
-            WebRootPath = _webRoot
+            ContentRootPath = AppContext.BaseDirectory
         });
 
         builder.WebHost.UseUrls(BaseUrl);
@@ -113,14 +112,20 @@ public sealed class ObsWebServer : IAsyncDisposable
             await next(context);
         });
 
-            app.UseStaticFiles();
+        // Serve only the bundled communication adapter from the application.
+        // Renderer HTML, CSS and progress JS live in web-theme, never in the app's
+        // static file root. This also prevents stale Debug output shadowing edits.
         app.UseWebSockets(new WebSocketOptions
         {
             KeepAliveInterval = TimeSpan.FromSeconds(20)
         });
 
-        app.MapGet("/", () =>
+        app.MapGet("/js/fluentflyout-api.js", () =>
+            Results.File(_browserApiPath, "text/javascript; charset=utf-8"));
+
+        app.MapGet("/", (HttpContext context) =>
         {
+            context.Response.Headers.CacheControl = "no-store";
             try
             {
                 var html = _themeManager.ReadTheme(_selectedThemeFileName());
@@ -134,8 +139,9 @@ public sealed class ObsWebServer : IAsyncDisposable
         });
 
         var themeAssetContentTypes = new FileExtensionContentTypeProvider();
-        app.MapGet("/theme-assets/{**assetPath}", (string assetPath) =>
+        app.MapGet("/theme-assets/{**assetPath}", (HttpContext context, string assetPath) =>
         {
+            context.Response.Headers.CacheControl = "no-store";
             try
             {
                 var assetPathOnDisk = _themeManager.ResolveThemeAssetPath(
@@ -156,6 +162,16 @@ public sealed class ObsWebServer : IAsyncDisposable
                 return Results.BadRequest();
             }
         });
+
+        // HTML copied by previous builds uses these absolute renderer URLs.
+        // Keep the old URLs working, but resolve their bytes from external
+        // web-theme/default rather than bundling another renderer in the MSIX.
+        app.MapGet("/css/fluent.css", (HttpContext context) =>
+            ServeLegacyRendererAsset(context, "css/fluent.css", "text/css; charset=utf-8"));
+        app.MapGet("/js/app.js", (HttpContext context) =>
+            ServeLegacyRendererAsset(context, "js/app.js", "text/javascript; charset=utf-8"));
+        app.MapGet("/js/progress-utils.js", (HttpContext context) =>
+            ServeLegacyRendererAsset(context, "js/progress-utils.js", "text/javascript; charset=utf-8"));
 
         app.MapGet("/api/health", () => Results.Json(new
         {
@@ -209,6 +225,25 @@ public sealed class ObsWebServer : IAsyncDisposable
             _stateStore.Changed -= OnMediaStateChanged;
             await app.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    private IResult ServeLegacyRendererAsset(HttpContext context, string relativePath, string contentType)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var assetPath = _themeManager.ResolveThemeAssetPath(
+                relativePath, _themeManager.DefaultThemeFolderName);
+            return Results.File(assetPath, contentType);
+        }
+        catch (FileNotFoundException)
+        {
+            return Results.NotFound();
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.BadRequest();
         }
     }
 

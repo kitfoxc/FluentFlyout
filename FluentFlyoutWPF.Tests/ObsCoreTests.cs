@@ -146,6 +146,73 @@ public sealed class ObsCoreTests
         }
     }
 
+    [Fact]
+    public void WebThemeManager_SeedsCompleteRendererAndPreservesExistingCustomizations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "FluentFlyout.Tests", Guid.NewGuid().ToString("N"));
+        var themeRoot = Path.Combine(root, "themes");
+        var defaultFolder = Path.Combine(themeRoot, "default");
+
+        try
+        {
+            var manager = new WebThemeManager(themeDirectory: themeRoot);
+            var index = Path.Combine(defaultFolder, "index.html");
+            var css = Path.Combine(defaultFolder, "css", "fluent.css");
+            var app = Path.Combine(defaultFolder, "js", "app.js");
+            var helpers = Path.Combine(defaultFolder, "js", "progress-utils.js");
+
+            Assert.True(File.Exists(index));
+            Assert.True(File.Exists(css));
+            Assert.True(File.Exists(app));
+            Assert.True(File.Exists(helpers));
+            Assert.Contains("href=\"css/fluent.css\"", File.ReadAllText(index));
+            Assert.Contains("src=\"js/app.js\"", File.ReadAllText(index));
+            Assert.Contains("/js/fluentflyout-api.js", File.ReadAllText(index));
+            Assert.Equal(app, manager.ResolveThemeAssetPath("js/app.js", "default"));
+
+            // A user edit is authoritative; a second start must not silently
+            // overwrite it. Missing individual assets may be restored.
+            File.WriteAllText(css, "/* user customization */");
+            File.Delete(helpers);
+            _ = new WebThemeManager(themeDirectory: themeRoot);
+
+            Assert.Equal("/* user customization */", File.ReadAllText(css));
+            Assert.True(File.Exists(helpers));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WebThemeManager_UpgradesHtmlOnlyDefaultWithoutOverwritingItsEntry()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "FluentFlyout.Tests", Guid.NewGuid().ToString("N"));
+        var themeRoot = Path.Combine(root, "themes");
+        var defaultFolder = Path.Combine(themeRoot, "default");
+
+        try
+        {
+            Directory.CreateDirectory(defaultFolder);
+            const string legacyHtml = "<html><head><link href=\"/css/fluent.css\"></head><body><script src=\"/js/app.js\"></script></body></html>";
+            File.WriteAllText(Path.Combine(defaultFolder, "index.html"), legacyHtml);
+
+            var manager = new WebThemeManager(themeDirectory: themeRoot);
+
+            Assert.Equal(legacyHtml, File.ReadAllText(Path.Combine(defaultFolder, "index.html")));
+            Assert.True(File.Exists(manager.ResolveThemeAssetPath("css/fluent.css", "default")));
+            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/app.js", "default")));
+            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/progress-utils.js", "default")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed record FakeSession(string Id);
 
     private sealed class BlockingWebSocket : WebSocket

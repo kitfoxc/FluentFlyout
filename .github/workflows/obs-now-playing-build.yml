@@ -49,6 +49,15 @@ jobs:
           if (-not $hostFxr -or -not $aspNetCore) {
             throw "Self-contained publish output is missing the .NET host or ASP.NET Core runtime."
           }
+          $api = Join-Path $publishDir "Web/js/fluentflyout-api.js"
+          if (-not (Test-Path $api)) {
+            throw "Bundled browser communication API was not published."
+          }
+          foreach ($file in @("Web/index.html", "Web/css/fluent.css", "Web/js/app.js", "Web/js/progress-utils.js")) {
+            if (Test-Path (Join-Path $publishDir $file)) {
+              throw "Renderer resource must be seeded externally, not shipped as a loose file: $file"
+            }
+          }
       - name: Build WPF Release ARM64
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=ARM64
       - name: Build unsigned MSIX package

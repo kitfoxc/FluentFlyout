@@ -137,15 +137,28 @@ FluentFlyout creates the user theme directory on first launch:
 
 `%APPDATA%\\FluentFlyout\\web-theme`
 
-The built-in `index.html` is copied into the `default` theme folder as
-`index.html`. Every immediate subfolder of `web-theme` represents exactly one
+On first initialization, the bundled renderer template is extracted into
+`web-theme/default` as `index.html`, `css/fluent.css`, `js/app.js`, and
+`js/progress-utils.js`. All four files are then served directly from that
+writable directory. Edit any of these files and manually refresh the OBS Browser
+Source to see the changes; no application rebuild is needed. No automatic file
+watching, renderer version migration, or overwriting of existing files occurs.
+The communication adapter at `/js/fluentflyout-api.js` remains bundled with
+the application and is not editable through the theme directory.
+
+Every immediate subfolder of `web-theme` represents exactly one
 theme. FluentFlyout does not scan loose files in the root or recursively scan
 nested folders.
 
 ```text
 web-theme/
 ├── default/
-│   └── index.html
+│   ├── index.html
+│   ├── css/
+│   │   └── fluent.css
+│   └── js/
+│       ├── app.js
+│       └── progress-utils.js
 ├── Minimal/
 │   ├── index.html
 │   ├── style.css
@@ -167,7 +180,11 @@ Select a folder to apply its theme; connected OBS Browser Sources reload
 automatically. Use **Refresh themes** after adding or removing a theme folder.
 
 Legacy root-level `default.html` is copied into `default/index.html` during
-upgrade when the new default entry does not already exist. Other loose root
+upgrade when the new default entry does not already exist. Existing
+`default/index.html` is never overwritten; missing default renderer CSS/JS
+files are initialized individually. Older HTML with absolute `/css/fluent.css`,
+`/js/app.js`, and `/js/progress-utils.js` references continues to work:
+these URLs are compatibility aliases to the external `default` folder. Other loose root
 HTML files are intentionally ignored; move each theme into its own folder.
 A custom HTML file should include the shared browser API:
 
