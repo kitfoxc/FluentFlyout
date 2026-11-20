@@ -43,6 +43,7 @@ Each WebSocket message has this shape:
     "playbackStatus": "Playing",
     "position": 82.5,
     "duration": 200,
+    "positionProjectionMs": 4200,
     "timelineLastUpdatedTime": "2026-11-19T19:30:00Z",
     "coverId": "a1b2c3d4",
     "coverUrl": "/api/covers/a1b2c3d4"
@@ -61,44 +62,40 @@ pending media frames are replaced instead of forming a send backlog. Control
 messages such as `theme.changed` remain ordered and are not replaced by media
 updates.
 
-The optional `timelineLastUpdatedTime` field carries the SMTC sample timestamp.
-It is metadata only: FluentFlyout's original SMTC position calculation and
-native media seek bar are unchanged.
+The optional `timelineLastUpdatedTime` field still carries the original SMTC
+sample timestamp for compatibility. It is no longer used by the built-in HTML
+theme to infer playback timing.
 
-The built-in page uses a small progress synchronization state machine:
+The native flyout and WebSocket now share `SmtcTimelineClock`:
 
-- `Waiting/Calibrating`: on track start or resume, hold the playhead until at
-  least three fresh samples show forward movement over a minimum observation
-  window. The page does not extrapolate during this phase.
-- `Running`: interpolate locally with a monotonic browser clock and apply
-  small corrections gradually.
-- `Stalled`: if the timeline stops advancing or its sample timestamp becomes
-  stale, freeze the playhead. Require consecutive advancing samples before
-  resuming; short forward recovery gaps are eased rather than snapped.
-- `Paused`: keep a static playhead and start an idle timer.
+- Source position changes are anchored using a monotonic clock.
+- The playhead does not advance on initial `Playing` status alone. A real
+  forward position sample must be observed first.
+- Repeated samples do not reset the extrapolation deadline.
+- A new timeline sample with unchanged position freezes the playhead for
+  potential buffering; an explicit pause or stop always freezes it.
+- Small position discrepancies are ignored or partially corrected, while
+  large discontinuities are treated as seeks.
+- Playback is extrapolated no further than five seconds after a confirmed
+  position sample; the timeline is clamped to its reported duration.
 
-A large discontinuity during normal playback remains responsive as a seek.
-A forward discontinuity after a detected stall is treated as a likely buffer
-recovery and eased over a short interval. SMTC does not expose a universal
-buffering flag, so stall detection is heuristic and may need tuning for
-individual media sources.
+The additive `positionProjectionMs` field tells HTML themes how many
+milliseconds of further local interpolation the **current outgoing snapshot**
+may use. `0` means the position is frozen. It is recalculated immediately
+before WebSocket delivery (including new-client connection and HTTP snapshots),
+so repeated/late snapshots do not restart an expired five-second budget.
 
-For resource hygiene, the built-in page runs no animation frame while waiting,
-stalled, paused, or asleep. It enters sleep immediately when no media is
-available or playback is stopped/closed, and after five minutes of continuous
-pause. Sleep hides and detaches the widget, releases album-art image resources,
-and clears idle timers. The WebSocket listener remains connected so a new track
-or resumed playback can wake the page immediately. The single media callback
-is retained intentionally; no per-message listeners or animation loops are
-created.
+The built-in page is a simple renderer: it uses `performance.now()` and
+`positionProjectionMs` to animate and then stop. It does not independently
+classify SMTC freshness, infer decoder activity, or maintain a second playback
+calibration state machine. When `positionProjectionMs` is absent on an older
+server, it uses a bounded five-second fallback. Existing custom themes can
+ignore the additive field and continue using Protocol 1.0.
 
-The shared `FluentFlyout.onMediaChanged(callback)` API remains Protocol 1.0
-compatible; `timelineLastUpdatedTime` is an additive optional field.
-
-The page is transparent outside the Fluent-inspired media card. It sleeps when
-no SMTC media is available or playback is stopped, and after five minutes of
-continuous pause. It reconnects automatically after service or Browser Source
-restarts.
+For resource hygiene, the built-in page has no animation loop when the
+projection budget expires, when paused, or while hidden. It releases album
+art immediately after stop/close and after five minutes of continuous pause.
+The WebSocket connection remains open so playback can wake the page.
 
 ## Runtime note
 

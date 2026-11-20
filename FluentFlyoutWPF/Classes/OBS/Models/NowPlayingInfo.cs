@@ -37,9 +37,8 @@ public sealed record NowPlayingInfo
     public int PositionProjectionMs { get; init; }
 
     /// <summary>
-    /// SMTC timestamp for the reported timeline position. This is metadata for
-    /// external presentation clients and does not alter FluentFlyout's own
-    /// media-position calculation.
+    /// Original SMTC timestamp retained as protocol metadata. The native
+    /// seekbar and WebSocket position use a shared monotonic clock instead.
     /// </summary>
     public DateTimeOffset? TimelineLastUpdatedTime { get; init; }
 
