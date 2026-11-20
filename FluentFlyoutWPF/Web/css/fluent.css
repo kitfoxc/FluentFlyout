@@ -180,18 +180,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.connection {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #ef4444;
-  opacity: .0;
-}
-
-.connection.is-disconnected { opacity: .9; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; }
