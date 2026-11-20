@@ -63,7 +63,7 @@ Scope: stability, performance, configuration validation, and theme-resource safe
 
 | File / location | Change | Expected behavior | Acceptance criteria |
 |---|---|---|---|
-| `.github/workflows/obs-now-playing-build.yml` | Run Node's built-in test runner before the Windows .NET build | Browser progress helper regressions are caught on every push | Node tests and Windows .NET 10 build succeed |
+| `.github/workflows/obs-now-playing-build.yml` | Run Node and .NET service tests, then build Debug and Release for x64/ARM64 | Browser and service regressions are caught before packaging | All tests and four architecture/configuration builds succeed |
 | `FluentFlyoutWPF/Web/js/progress-utils.js` and `progress-utils.test.mjs` | Extract and test pure position/freshness/sample-window helpers | Zero, stale timestamps, low-frequency calibration, and slow recovery are deterministic | `node --test` passes in CI |
 | `.github/workflows/build-msix.yml` and packaging configuration | Verify ASP.NET Core runtime availability in the packaged app | Packaged app starts even when the machine only has the declared prerequisite runtimes | Install and launch packaged x64 app; verify WebSocket health endpoint |
 | Release matrix | Verify x64 and ARM64 compatibility | Both supported architectures resolve required runtime assets | Both architecture builds succeed |

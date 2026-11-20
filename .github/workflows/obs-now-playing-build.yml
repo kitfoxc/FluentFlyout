@@ -30,3 +30,7 @@ jobs:
         run: dotnet test FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj --configuration Debug --no-restore
       - name: Build WPF application
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Debug --no-restore
+      - name: Build WPF Release x64
+        run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=x64
+      - name: Build WPF Release ARM64
+        run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=ARM64
