@@ -8,7 +8,9 @@ const {
   getReportedPosition,
   hasForwardProgress,
   isTimelineFresh,
-  pruneRecentSamples
+  pruneRecentSamples,
+  classifyPositionError,
+  timelineSampleKey
 } = await import(moduleUrl);
 
 test("a reported zero position is not replaced by the previous anchor", () => {
@@ -86,4 +88,17 @@ test("expired samples and non-advancing samples cannot calibrate playback", () =
 
   assert.equal(samples.length, 2);
   assert.equal(hasForwardProgress(samples, 3, 500, 0.12), false);
+});
+
+test("tiny position errors are ignored while drift and seeks remain actionable", () => {
+  assert.equal(classifyPositionError(10.08, 10), "ignore");
+  assert.equal(classifyPositionError(10.4, 10), "slew");
+  assert.equal(classifyPositionError(14, 10), "snap");
+  assert.equal(classifyPositionError(-1, 10), "invalid");
+});
+
+test("timeline keys distinguish valid timestamps from missing or sentinel values", () => {
+  assert.equal(timelineSampleKey({}), null);
+  assert.equal(timelineSampleKey({ timelineLastUpdatedTime: "1601-01-01T00:00:00Z" }), null);
+  assert.equal(timelineSampleKey({ timelineLastUpdatedTime: "2026-11-20T00:00:00Z" }), Date.parse("2026-11-20T00:00:00Z"));
 });
