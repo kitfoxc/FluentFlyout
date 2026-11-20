@@ -57,9 +57,13 @@ public sealed class SmtcTimelineClock
             {
                 anchor = new Anchor
                 {
-                    Position = raw, Duration = maximum, SourcePosition = raw,
-                    SourceUpdatedAt = sourceUpdatedAt, Ticks = now,
-                    IsPlaying = isPlaying, CanAdvance = false
+                    Position = raw,
+                    Duration = maximum,
+                    SourcePosition = raw,
+                    SourceUpdatedAt = sourceUpdatedAt,
+                    Ticks = now,
+                    IsPlaying = isPlaying,
+                    CanAdvance = false
                 };
                 _anchors.Add(sessionId, anchor);
                 return TimeSpan.FromSeconds(raw);
