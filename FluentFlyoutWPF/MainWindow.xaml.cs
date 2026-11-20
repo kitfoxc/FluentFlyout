@@ -978,6 +978,11 @@ public partial class MainWindow : MicaWindow
         {
             SettingsManager.Current.PinnedSessionId = string.Empty;
         }
+
+        // Keep the OBS-only pin valid even while its optional event subscriber is disabled.
+        if (SettingsManager.Current.ObsPinnedSessionId == mediaSession.Id)
+            SettingsManager.Current.ObsPinnedSessionId = string.Empty;
+
         UpdateTaskbar();
     }
 
