@@ -38,9 +38,9 @@ jobs:
       - name: Verify ASP.NET Core runtime is included in self-contained output
         shell: pwsh
         run: |
-          $outputRoot = "FluentFlyoutWPF/bin/Release"
-          $hostFxr = Get-ChildItem $outputRoot -Filter "hostfxr.dll" -Recurse | Select-Object -First 1
-          $aspNetCore = Get-ChildItem $outputRoot -Filter "Microsoft.AspNetCore.Hosting.dll" -Recurse | Select-Object -First 1
+          $outputRoot = "FluentFlyoutWPF/bin"
+          $hostFxr = Get-ChildItem $outputRoot -Filter "hostfxr.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '[\\/]Release[\\/]' } | Select-Object -First 1
+          $aspNetCore = Get-ChildItem $outputRoot -Filter "Microsoft.AspNetCore.Hosting.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '[\\/]Release[\\/]' } | Select-Object -First 1
           if (-not $hostFxr -or -not $aspNetCore) {
             throw "Self-contained Release output is missing the .NET host or ASP.NET Core runtime."
           }
