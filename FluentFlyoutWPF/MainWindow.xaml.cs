@@ -1588,7 +1588,13 @@ public partial class MainWindow : MicaWindow
 
     private void SeekbarUpdateUi(object? sender)
     {
-        if (!_seekBarEnabled || Visibility != Visibility.Visible || _isDragging)
+        if (!_seekBarEnabled)
+        {
+            HandlePlayBackState(GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused);
+            return;
+        }
+
+        if (Visibility != Visibility.Visible || _isDragging)
             return;
 
         if (GetActiveMediaSession() is not { } session)
