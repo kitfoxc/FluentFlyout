@@ -226,7 +226,7 @@ public sealed class SmtcTimelineClock
 
     private static double Project(Anchor anchor, long now)
     {
-        if (!anchor.IsPlaying || anchor.IsBuffering)
+        if (!anchor.IsPlaying || anchor.IsBuffering || anchor.Duration <= 0)
             return anchor.Position;
 
         double elapsed = Math.Max(0, (double)(now - anchor.Ticks) / Stopwatch.Frequency);
