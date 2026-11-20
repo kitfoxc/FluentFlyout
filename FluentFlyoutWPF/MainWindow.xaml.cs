@@ -1774,7 +1774,7 @@ public partial class MainWindow : MicaWindow
 
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.BeginInvoke(() => HandlePlayBackState(status));
+            Dispatcher.BeginInvoke(new Action(() => HandlePlayBackState(status)));
             return;
         }
 
