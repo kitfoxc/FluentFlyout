@@ -18,7 +18,7 @@ Scope: stability, performance, configuration validation, and theme-resource safe
 | `FluentFlyoutWPF/Web/js/app.js` — paused branch in `render()` | Distinguish valid numeric zero from missing/invalid position | Seeking to 0 while paused displays 0:00 rather than the previous anchor | Pause, seek to 0, and verify position and progress width are zero |
 | Same — `handleVisibilityChange()` | Use the same explicit position validation | A hidden/visible transition does not resurrect an old paused position | Hide and restore the Browser Source while paused at 0 |
 | Same — `beginCalibration()` | Do not add stale initial snapshots to the calibration sample set | Only fresh timeline samples can prove playback advancement | Begin with an expired timestamp; interpolation must remain stopped |
-| Same — `processCalibrationSample()` | Retain fresh samples for the full calibration timeout | Lower-frequency SMTC updates can satisfy the three-sample requirement | Three fresh advancing samples at 1.5-second intervals calibrate successfully |
+| Same — `processCalibrationSample()` | Retain fresh samples for the full calibration timeout | Lower-frequency SMTC updates can satisfy the three-sample requirement | Three fresh advancing samples at 1.5–4.5-second intervals calibrate successfully |
 | Same — `processStalledSample()` | Use a recovery window compatible with low-frequency providers | A stalled source can recover when two fresh advancing samples arrive slowly | Two fresh samples 1.5–4 seconds apart resume playback smoothly |
 | Same — `synchronizePosition()` | Preserve seek snapping and drift correction | Manual seeks remain responsive; ordinary drift remains eased | Verify backward seek, large forward seek, and sub-second drift |
 

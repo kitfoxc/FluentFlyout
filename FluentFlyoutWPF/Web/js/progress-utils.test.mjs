@@ -55,6 +55,17 @@ test("the calibration window retains advancing samples from a 1.5-second source"
   assert.equal(hasForwardProgress(samples, 3, 500, 0.12), true);
 });
 
+test("the calibration window accommodates SMTC updates every 4.5 seconds", () => {
+  const samples = pruneRecentSamples([
+    { position: 20, at: 0 },
+    { position: 24.5, at: 4500 },
+    { position: 29, at: 9000 }
+  ], 9000, 10_000);
+
+  assert.equal(samples.length, 3);
+  assert.equal(hasForwardProgress(samples, 3, 500, 0.12), true);
+});
+
 test("the recovery window permits slow but fresh advancing samples", () => {
   const samples = pruneRecentSamples([
     { position: 40, at: 0 },
