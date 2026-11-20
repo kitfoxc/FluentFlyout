@@ -97,13 +97,14 @@ public sealed class ObsCoreTests
 
         public override WebSocketCloseStatus? CloseStatus => null;
         public override string? CloseStatusDescription => null;
-        public override WebSocketState State { get; private set; } = WebSocketState.Open;
+        private WebSocketState _state = WebSocketState.Open;
+        public override WebSocketState State => _state;
         public override string? SubProtocol => null;
         public Task SendStarted => _sendStarted.Task;
 
         public override void Abort()
         {
-            State = WebSocketState.Aborted;
+            _state = WebSocketState.Aborted;
             _sendCompletion.TrySetCanceled();
         }
 
@@ -112,7 +113,7 @@ public sealed class ObsCoreTests
             string? statusDescription,
             CancellationToken cancellationToken)
         {
-            State = WebSocketState.Closed;
+            _state = WebSocketState.Closed;
             _sendCompletion.TrySetResult();
             return Task.CompletedTask;
         }
@@ -122,7 +123,7 @@ public sealed class ObsCoreTests
             string? statusDescription,
             CancellationToken cancellationToken)
         {
-            State = WebSocketState.CloseSent;
+            _state = WebSocketState.CloseSent;
             return Task.CompletedTask;
         }
 

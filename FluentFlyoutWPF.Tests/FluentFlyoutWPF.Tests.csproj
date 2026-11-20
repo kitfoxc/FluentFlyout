@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.22000.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NLog" Version="6.1.3" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -16,6 +16,9 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FluentFlyoutWPF\FluentFlyout.csproj" />
+    <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Models\NowPlayingInfo.cs" Link="OBS\Models\NowPlayingInfo.cs" />
+    <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaStateStore.cs" Link="OBS\Services\MediaStateStore.cs" />
+    <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaSessionSelector.cs" Link="OBS\Services\MediaSessionSelector.cs" />
+    <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Server\WebSocketHub.cs" Link="OBS\Server\WebSocketHub.cs" />
   </ItemGroup>
 </Project>
