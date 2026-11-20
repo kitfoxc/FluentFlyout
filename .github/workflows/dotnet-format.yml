@@ -2,7 +2,7 @@ name: .NET format
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "fix/tray-exit-dashboard-layout" ]
   pull_request:
     branches: [ "master" ]
 

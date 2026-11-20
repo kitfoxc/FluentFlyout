@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/obs-now-playing-m1
+      - fix/tray-exit-dashboard-layout
   pull_request:
     branches:
       - master
