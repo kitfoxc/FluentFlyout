@@ -954,8 +954,8 @@ public partial class MainWindow : MicaWindow
         pauseOtherMediaSessionsIfNeeded(mediaSession);
 
         // OBS follows its own source selection, independently of the desktop flyout.
-        if (GetObsMediaSession() is { } obsSession &&
-            string.Equals(obsSession.Id, mediaSession.Id, StringComparison.Ordinal))
+        if (GetObsMediaSession() is { } obsSession
+            && string.Equals(obsSession.Id, mediaSession.Id, StringComparison.Ordinal))
             PublishObsMediaState();
 
         var focusedSession = GetActiveMediaSession();
@@ -1116,8 +1116,8 @@ public partial class MainWindow : MicaWindow
             if (_isCleaningUp)
                 return;
 
-            if (_seekBarEnabled && Visibility == Visibility.Visible && !_isHiding && !_isDragging &&
-                _timelineClock.Estimate(session.Id) is { } position)
+            if (_seekBarEnabled && Visibility == Visibility.Visible && !_isHiding && !_isDragging
+                && _timelineClock.Estimate(session.Id) is { } position)
                 UpdateSeekbarCurrentDuration(position);
 
             HandlePlayBackState(session.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
@@ -1775,11 +1775,11 @@ public partial class MainWindow : MicaWindow
             return;
         }
 
-        bool updateNativeSeekbar = _seekBarEnabled && IsVisible && !_isHiding && !_isDragging &&
-            activeIsPlaying;
-        bool updateObsFromActive = obsIsPlaying &&
-            activeSession != null &&
-            string.Equals(activeSession.Id, obsSession?.Id, StringComparison.Ordinal);
+        bool updateNativeSeekbar = _seekBarEnabled && IsVisible && !_isHiding && !_isDragging
+            && activeIsPlaying;
+        bool updateObsFromActive = obsIsPlaying
+            && activeSession != null
+            && string.Equals(activeSession.Id, obsSession?.Id, StringComparison.Ordinal);
 
         // Polling is intentional: some SMTC providers publish duration and playback
         // state but never raise timeline-position events. The shared clock can then
@@ -1852,11 +1852,11 @@ public partial class MainWindow : MicaWindow
             return;
         }
 
-        bool shouldRunNative = _seekBarEnabled &&
-            IsVisible &&
-            status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-        bool shouldRunObs = SettingsManager.Current.ObsNowPlayingEnabled &&
-            GetObsMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
+        bool shouldRunNative = _seekBarEnabled
+            && IsVisible
+            && status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        bool shouldRunObs = SettingsManager.Current.ObsNowPlayingEnabled
+            && GetObsMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
                 == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         bool shouldRun = shouldRunNative || shouldRunObs;
 
@@ -1977,7 +1977,6 @@ public partial class MainWindow : MicaWindow
 
             cts?.Cancel();
             cts?.Dispose();
-            cts = null;
 
             TaskbarVisualizerControl.DisposeVisualizer();
 
@@ -2078,18 +2077,6 @@ public partial class MainWindow : MicaWindow
     private void MicaWindow_MouseEnter(object sender, MouseEventArgs e) // keep the flyout open when mouse is over
     {
         ShowMediaFlyout();
-    }
-
-    private void NotifyIconQuit_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            CleanupResources();
-        }
-        finally
-        {
-            Application.Current.Shutdown();
-        }
     }
 
     private async Task<bool> WaitForExplorerReadyAsync(int timeoutMs = 60000)
