@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using FluentFlyoutWPF.Classes.OBS.Models;
 using FluentFlyoutWPF.Classes.OBS.Server;
 using FluentFlyoutWPF.Classes.OBS.Services;
+using Xunit;
 
 namespace FluentFlyoutWPF.Tests;
 
