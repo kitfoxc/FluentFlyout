@@ -8,16 +8,16 @@ namespace FluentFlyoutWPF.Classes.Utils;
 /// <summary>
 /// A bounded, monotonic projection of SMTC timeline samples. This is the one
 /// playback-position model used by the native flyout and the WebSocket bridge.
-/// It never changes the media provider or assumes SMTC timestamps are accurate
-/// wall-clock anchors.
 /// </summary>
 public sealed class SmtcTimelineClock
 {
     public const double MaximumExtrapolationSeconds = 5.0;
+    public const double FallbackStartDelaySeconds = 1.5;
     private const double SampleEpsilonSeconds = 0.04;
     private const double NoiseBandSeconds = 0.18;
     private const double SeekThresholdSeconds = 2.5;
     private const double DriftCorrectionFraction = 0.35;
+    private const int FallbackProjectionMilliseconds = 1000;
 
     private sealed class Anchor
     {
@@ -28,15 +28,18 @@ public sealed class SmtcTimelineClock
         public long Ticks;
         public bool IsPlaying;
         public bool CanAdvance;
+        public bool IsBuffering;
+        public bool HasReliableTimeline;
     }
 
     private readonly object _sync = new();
     private readonly Dictionary<string, Anchor> _anchors = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Accepts an SMTC observation. A repeated sample is not treated as new
-    /// evidence; a genuine unchanged position from a new timestamp freezes
-    /// the clock (for buffering). Large changes are treated as seeks.
+    /// Accepts an SMTC observation. When a source exposes no usable timeline,
+    /// playback state and a monotonic clock provide a fallback after a short
+    /// startup grace period. A newly timestamped unchanged sample from a
+    /// seek-capable source is treated as an explicit buffering signal.
     /// </summary>
     public TimeSpan Observe(
         string sessionId,
@@ -44,7 +47,8 @@ public sealed class SmtcTimelineClock
         TimeSpan duration,
         DateTimeOffset sourceUpdatedAt,
         bool isPlaying,
-        long? monotonicTicks = null)
+        long? monotonicTicks = null,
+        bool hasReliableTimeline = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         long now = monotonicTicks ?? Stopwatch.GetTimestamp();
@@ -63,7 +67,8 @@ public sealed class SmtcTimelineClock
                     SourceUpdatedAt = sourceUpdatedAt,
                     Ticks = now,
                     IsPlaying = isPlaying,
-                    CanAdvance = false
+                    CanAdvance = false,
+                    HasReliableTimeline = hasReliableTimeline
                 };
                 _anchors.Add(sessionId, anchor);
                 return TimeSpan.FromSeconds(raw);
@@ -73,40 +78,69 @@ public sealed class SmtcTimelineClock
             bool sameTimestamp = sourceUpdatedAt == anchor.SourceUpdatedAt;
             bool sameState = isPlaying == anchor.IsPlaying;
 
-            if (samePosition && sameTimestamp && sameState && maximum == anchor.Duration)
+            if (samePosition && sameTimestamp && sameState &&
+                hasReliableTimeline == anchor.HasReliableTimeline)
+            {
+                anchor.Duration = maximum;
                 return TimeSpan.FromSeconds(Project(anchor, now));
+            }
 
             double predicted = Project(anchor, now);
             double next;
             bool canAdvance;
+            bool isBuffering;
 
             if (!isPlaying)
             {
                 // A pause event can arrive before the SMTC timeline is updated.
-                // Preserve the predicted pause point if the timeline is unchanged.
-                next = anchor.IsPlaying && samePosition && sameTimestamp ? predicted : raw;
+                // Keep the projected point when the source cannot report position.
+                next = anchor.IsPlaying && samePosition &&
+                    (sameTimestamp || !hasReliableTimeline)
+                    ? predicted
+                    : raw;
                 canAdvance = false;
+                isBuffering = false;
             }
             else if (!anchor.IsPlaying)
             {
-                // A 'playing' state does not prove that the decoder has moved.
-                // Wait for an advancing source sample before extrapolating.
+                // Resume from the provider's latest position. If it has no
+                // position feed, the fallback clock starts after the grace period.
                 next = raw;
                 canAdvance = !samePosition;
+                isBuffering = false;
             }
-            else if (!anchor.CanAdvance && !samePosition)
+            else if (samePosition && !hasReliableTimeline)
             {
-                // First confirmed movement after startup or buffering is
-                // authoritative: no extrapolated position exists to smooth.
-                next = raw;
-                canAdvance = true;
+                // Non-seekable sources often keep LastUpdatedTime moving while
+                // Position remains unavailable. Do not mistake that for buffering.
+                if (anchor.IsBuffering)
+                {
+                    anchor.Position = raw;
+                    anchor.Ticks = now;
+                    anchor.CanAdvance = false;
+                    anchor.IsBuffering = false;
+                }
+
+                anchor.SourceUpdatedAt = sourceUpdatedAt;
+                anchor.Duration = maximum;
+                anchor.HasReliableTimeline = false;
+                return TimeSpan.FromSeconds(Project(anchor, now));
             }
             else if (samePosition)
             {
-                // A newly timestamped but unchanged sample indicates a stalled
-                // transport. Avoid inventing progress while a source buffers.
+                // A fresh unchanged sample from a source with a usable timeline
+                // is evidence of buffering, so freeze until the source moves again.
                 next = raw;
                 canAdvance = false;
+                isBuffering = true;
+            }
+            else if (!anchor.CanAdvance)
+            {
+                // First confirmed movement after startup or buffering is
+                // authoritative: there is no extrapolated position to smooth.
+                next = raw;
+                canAdvance = true;
+                isBuffering = false;
             }
             else
             {
@@ -117,6 +151,7 @@ public sealed class SmtcTimelineClock
                         ? raw
                         : predicted + error * DriftCorrectionFraction;
                 canAdvance = true;
+                isBuffering = false;
             }
 
             anchor.Position = Clamp(next, maximum);
@@ -126,6 +161,8 @@ public sealed class SmtcTimelineClock
             anchor.Ticks = now;
             anchor.IsPlaying = isPlaying;
             anchor.CanAdvance = canAdvance;
+            anchor.IsBuffering = isBuffering;
+            anchor.HasReliableTimeline = hasReliableTimeline;
 
             return TimeSpan.FromSeconds(anchor.Position);
         }
@@ -144,8 +181,9 @@ public sealed class SmtcTimelineClock
     }
 
     /// <summary>
-    /// Remaining extrapolation budget at the moment a snapshot is sent.
-    /// Clients must not restart a fresh 5-second clock for an old sample.
+    /// Remaining projection budget at the moment a snapshot is sent.
+    /// Fallback-clock snapshots are refreshed periodically by the host, so
+    /// clients receive a short projection window instead of restarting 5 seconds.
     /// </summary>
     public int RemainingProjectionMilliseconds(string sessionId, long? monotonicTicks = null)
     {
@@ -155,10 +193,25 @@ public sealed class SmtcTimelineClock
         lock (_sync)
         {
             if (!_anchors.TryGetValue(sessionId, out var anchor) ||
-                !anchor.IsPlaying || !anchor.CanAdvance)
+                !anchor.IsPlaying || anchor.IsBuffering || anchor.Duration <= 0)
                 return 0;
 
             double age = Math.Max(0, (double)(now - anchor.Ticks) / Stopwatch.Frequency);
+            if (!anchor.CanAdvance)
+            {
+                if (age <= FallbackStartDelaySeconds)
+                    return 0;
+
+                return Project(anchor, now) < anchor.Duration
+                    ? FallbackProjectionMilliseconds
+                    : 0;
+            }
+
+            if (!anchor.HasReliableTimeline)
+                return Project(anchor, now) < anchor.Duration
+                    ? FallbackProjectionMilliseconds
+                    : 0;
+
             return (int)Math.Max(0, Math.Ceiling((MaximumExtrapolationSeconds - age) * 1000));
         }
     }
@@ -173,12 +226,15 @@ public sealed class SmtcTimelineClock
 
     private static double Project(Anchor anchor, long now)
     {
-        if (!anchor.IsPlaying || !anchor.CanAdvance)
+        if (!anchor.IsPlaying || anchor.IsBuffering)
             return anchor.Position;
 
-        double elapsed = Math.Clamp(
-            (double)(now - anchor.Ticks) / Stopwatch.Frequency,
-            0, MaximumExtrapolationSeconds);
+        double elapsed = Math.Max(0, (double)(now - anchor.Ticks) / Stopwatch.Frequency);
+        if (!anchor.CanAdvance)
+            elapsed = Math.Max(0, elapsed - FallbackStartDelaySeconds);
+        else if (anchor.HasReliableTimeline)
+            elapsed = Math.Min(elapsed, MaximumExtrapolationSeconds);
+
         return Clamp(anchor.Position + elapsed, anchor.Duration);
     }
 
