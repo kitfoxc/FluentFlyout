@@ -44,3 +44,24 @@ export function hasForwardProgress(samples, minSamples, minSpanMs, minAdvance) {
     && latest.at - first.at >= minSpanMs
     && latest.position - first.position >= minAdvance;
 }
+
+// Ignore insignificant jitter without discarding meaningful seeks or drift.
+// Values are in seconds; callers must compare against their predicted playhead.
+export function classifyPositionError(reported, predicted, deadband = 0.15, seekThreshold = 3) {
+  if (!Number.isFinite(reported) || reported < 0 || !Number.isFinite(predicted))
+    return "invalid";
+  const error = reported - predicted;
+  if (Math.abs(error) <= deadband) return "ignore";
+  if (Math.abs(error) >= seekThreshold) return "snap";
+  return "slew";
+}
+
+// Prevent repeated snapshots with the same SMTC timeline timestamp from
+// masquerading as independent evidence that playback has advanced.
+export function timelineSampleKey(media) {
+  const raw = media?.timelineLastUpdatedTime;
+  const timestamp = raw ? Date.parse(raw) : NaN;
+  return Number.isFinite(timestamp) && timestamp >= Date.UTC(2000, 0, 1)
+    ? timestamp
+    : null;
+}
