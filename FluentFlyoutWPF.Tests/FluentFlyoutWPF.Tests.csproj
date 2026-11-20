@@ -15,6 +15,14 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <!-- The tests compile WebThemeManager into their own assembly, so they need
+       the same first-run renderer seeds and resource names as FluentFlyout. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\FluentFlyoutWPF\Web\index.html" LogicalName="FluentFlyoutWPF.Web.Renderer.index.html" />
+    <EmbeddedResource Include="..\FluentFlyoutWPF\Web\css\fluent.css" LogicalName="FluentFlyoutWPF.Web.Renderer.css.fluent.css" />
+    <EmbeddedResource Include="..\FluentFlyoutWPF\Web\js\app.js" LogicalName="FluentFlyoutWPF.Web.Renderer.js.app.js" />
+    <EmbeddedResource Include="..\FluentFlyoutWPF\Web\js\progress-utils.js" LogicalName="FluentFlyoutWPF.Web.Renderer.js.progress-utils.js" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Models\NowPlayingInfo.cs" Link="OBS\Models\NowPlayingInfo.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\MediaStateStore.cs" Link="OBS\Services\MediaStateStore.cs" />
