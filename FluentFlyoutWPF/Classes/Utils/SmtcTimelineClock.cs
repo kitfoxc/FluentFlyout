@@ -90,6 +90,13 @@ public sealed class SmtcTimelineClock
                 next = raw;
                 canAdvance = !samePosition;
             }
+            else if (!anchor.CanAdvance && !samePosition)
+            {
+                // First confirmed movement after startup or buffering is
+                // authoritative: no extrapolated position exists to smooth.
+                next = raw;
+                canAdvance = true;
+            }
             else if (samePosition)
             {
                 // A newly timestamped but unchanged sample indicates a stalled
