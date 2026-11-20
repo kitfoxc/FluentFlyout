@@ -1934,7 +1934,7 @@ public partial class MainWindow : MicaWindow
             _obsServerGate.Release();
             if (!_isCleaningUp && !Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
             {
-                Dispatcher.BeginInvoke(new Action(() =>
+                _ = Dispatcher.BeginInvoke(new Action(() =>
                     HandlePlayBackState(GetActiveMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus)));
             }
         }
