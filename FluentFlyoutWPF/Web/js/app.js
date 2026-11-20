@@ -1,8 +1,7 @@
 import {
   getReportedPosition,
-  hasForwardProgress,
-  isTimelineFresh,
-  pruneRecentSamples
+  getTimelinePosition,
+  smoothPosition
 } from "./progress-utils.js";
 
 const elements = {
@@ -23,25 +22,16 @@ const elements = {
 
 const SYNC = Object.freeze({
   SLEEPING: "sleeping",
-  WAITING: "waiting",
-  CALIBRATING: "calibrating",
   RUNNING: "running",
-  STALLED: "stalled",
   PAUSED: "paused"
 });
 
 const PAUSED_SLEEP_MS = 5 * 60 * 1000;
-const CALIBRATION_TIMEOUT_MS = 10_000;
-const CALIBRATION_SAMPLE_WINDOW_MS = CALIBRATION_TIMEOUT_MS;
-const CALIBRATION_MIN_SAMPLES = 3;
-const CALIBRATION_MIN_SPAN_MS = 500;
-const CALIBRATION_MIN_ADVANCE = 0.12;
-const STALL_TIMEOUT_MS = 3500;
-const STALE_TIMELINE_MS = 4500;
-// Allow slow SMTC providers to deliver two recovery samples without requiring
-// an unrealistically short update interval.
-const RECOVERY_SAMPLE_WINDOW_MS = STALE_TIMELINE_MS * 2;
-const RECOVERY_SMOOTH_MAX_SECONDS = 8;
+const NORMAL_SMOOTHING_MS = 150;
+const RECOVERY_SMOOTHING_MS = 500;
+const BACKWARD_SEEK_THRESHOLD_SECONDS = 0.8;
+const FORWARD_SNAP_THRESHOLD_SECONDS = 8;
+const TEXT_UPDATE_INTERVAL_MS = 200;
 
 let state = null;
 let syncMode = SYNC.SLEEPING;
@@ -52,22 +42,14 @@ let pendingCoverImage = null;
 let currentTrackKey = null;
 let sleeping = true;
 let sleepReason = "no-media";
-let lastPositionSample = null;
-let lastAdvanceAt = 0;
-let calibrationStartedAt = 0;
-let calibrationSamples = [];
-let recoverySamples = [];
 
-// The browser owns a continuous playhead only after SMTC's timeline has been
-// observed advancing. During startup and buffering it deliberately holds still.
-let positionAnchor = 0;
-let positionAnchorAt = performance.now();
-let correctionAmount = 0;
-let correctionStartedAt = 0;
-let correctionDuration = 900;
-
-const maxSoftCorrection = 0.6;
-const seekSnapThreshold = 3.0;
+// Logical position is the authoritative playhead derived from the latest SMTC
+// timeline anchor. Visual position is only a presentation value that follows it.
+let logicalAnchor = 0;
+let logicalAnchorAt = performance.now();
+let visualPosition = 0;
+let lastFrameAt = 0;
+let lastTextRenderAt = 0;
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -76,18 +58,25 @@ function formatTime(seconds) {
   const minutes = Math.floor((total % 3600) / 60);
   const remainder = total % 60;
   return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
-    : `${minutes}:${String(remainder).padStart(2, "0")}`;
+    ? hours + ":" + String(minutes).padStart(2, "0") + ":" + String(remainder).padStart(2, "0")
+    : minutes + ":" + String(remainder).padStart(2, "0");
 }
 
 function getTrackKey(media) {
   return [media?.sessionId || "", media?.title || ""].join("\u001f");
 }
 
-function hasFreshTimeline(media) {
-  // Older themes/sources may omit this additive timestamp. The helper treats
-  // that case as event-arrival freshness, preserving protocol 1.0 compatibility.
-  return isTimelineFresh(media, Date.now(), STALE_TIMELINE_MS);
+function clampToDuration(position) {
+  const duration = Math.max(0, Number(state?.duration) || 0);
+  const safePosition = Number.isFinite(position) ? Math.max(0, position) : 0;
+  return duration > 0 ? Math.min(duration, safePosition) : safePosition;
+}
+
+function getLogicalPosition(now = performance.now()) {
+  const elapsed = syncMode === SYNC.RUNNING && state?.playbackStatus === "Playing"
+    ? Math.max(0, now - logicalAnchorAt) / 1000
+    : 0;
+  return clampToDuration(logicalAnchor + elapsed);
 }
 
 function stopAnimation() {
@@ -100,6 +89,7 @@ function stopAnimation() {
 function startAnimation() {
   if (animationFrame || sleeping || document.hidden || syncMode !== SYNC.RUNNING)
     return;
+  lastFrameAt = performance.now();
   animationFrame = requestAnimationFrame(updateProgress);
 }
 
@@ -132,16 +122,14 @@ function enterSleep(reason, clearMedia = false) {
   syncMode = SYNC.SLEEPING;
   stopAnimation();
   clearPauseSleepTimer();
-  correctionAmount = 0;
   releaseCover();
   elements.widget.classList.add("is-hidden", "is-sleeping");
 
   if (clearMedia) {
     state = null;
     currentTrackKey = null;
-    calibrationSamples = [];
-    recoverySamples = [];
-    lastPositionSample = null;
+    logicalAnchor = 0;
+    visualPosition = 0;
   }
 }
 
@@ -162,40 +150,25 @@ function schedulePausedSleep() {
   }, PAUSED_SLEEP_MS);
 }
 
-function getInterpolatedPosition(now = performance.now()) {
-  if (!state) return 0;
-
-  const elapsed = syncMode === SYNC.RUNNING && state.playbackStatus === "Playing"
-    ? Math.max(0, now - positionAnchorAt) / 1000
-    : 0;
-
-  let position = positionAnchor + elapsed;
-
-  if (correctionAmount !== 0) {
-    const progress = Math.min(1, Math.max(0, (now - correctionStartedAt) / correctionDuration));
-    const easedProgress = progress * progress * (3 - 2 * progress);
-    position += correctionAmount * easedProgress;
-
-    if (progress >= 1) {
-      positionAnchor = position;
-      positionAnchorAt = now;
-      correctionAmount = 0;
-    }
-  }
-
-  const duration = Math.max(0, Number(state.duration) || 0);
-  return duration > 0
-    ? Math.min(duration, Math.max(0, position))
-    : Math.max(0, position);
+function setPosition(position, now = performance.now(), syncVisual = false) {
+  logicalAnchor = clampToDuration(position);
+  logicalAnchorAt = now;
+  if (syncVisual)
+    visualPosition = logicalAnchor;
 }
 
-function renderPosition(position) {
+function renderPosition(position, forceText = false) {
   const duration = Math.max(0, Number(state?.duration) || 0);
-  elements.progressFill.style.width = duration > 0
-    ? `${(Math.max(0, Math.min(duration, position)) / duration) * 100}%`
-    : "0%";
-  elements.position.textContent = formatTime(position);
-  elements.duration.textContent = formatTime(duration);
+  const safePosition = clampToDuration(position);
+  const progress = duration > 0 ? safePosition / duration : 0;
+  elements.progressFill.style.transform = "scaleX(" + Math.max(0, Math.min(1, progress)) + ")";
+
+  const now = performance.now();
+  if (forceText || now - lastTextRenderAt >= TEXT_UPDATE_INTERVAL_MS) {
+    elements.position.textContent = formatTime(safePosition);
+    elements.duration.textContent = formatTime(duration);
+    lastTextRenderAt = now;
+  }
 }
 
 function renderMetadata(media) {
@@ -208,6 +181,7 @@ function renderMetadata(media) {
     : media.playbackStatus === "Paused" ? "PAUSED" : "STOPPED";
   elements.widget.classList.toggle("is-paused", media.playbackStatus !== "Playing");
   elements.progressArea.classList.toggle("is-unavailable", !(Number(media.duration) > 0));
+  renderPosition(syncMode === SYNC.RUNNING ? getLogicalPosition() : visualPosition, true);
 }
 
 function setCover(url) {
@@ -252,186 +226,29 @@ function setCover(url) {
   image.src = url;
 }
 
-function resetAnchor(position, now = performance.now()) {
-  positionAnchor = Math.max(0, Number(position) || 0);
-  positionAnchorAt = now;
-  correctionAmount = 0;
-  correctionStartedAt = now;
-  correctionDuration = 900;
-}
-
-function beginCalibration(media, now) {
-  const position = getReportedPosition(media);
-  const fresh = hasFreshTimeline(media);
-  syncMode = SYNC.CALIBRATING;
-  calibrationStartedAt = now;
-  // A stale first snapshot may anchor the frozen display, but it must never
-  // count as evidence that the source has started advancing.
-  calibrationSamples = fresh ? [{ position, at: now }] : [];
-  recoverySamples = [];
-  lastPositionSample = position;
-  lastAdvanceAt = now;
-  resetAnchor(position, now);
-  stopAnimation();
-  renderPosition(position);
-}
-
-function enterStalled(now) {
-  if (syncMode === SYNC.RUNNING)
-    resetAnchor(getInterpolatedPosition(now), now);
-  syncMode = SYNC.STALLED;
-  calibrationSamples = [];
-  recoverySamples = [];
-  stopAnimation();
-  renderPosition(positionAnchor);
-}
-
-function startRunning(position, now, recovery = false) {
-  const target = Math.max(0, Number(position) || 0);
-
-  if (recovery) {
-    const difference = target - positionAnchor;
-    if (difference < -0.8 || Math.abs(difference) > RECOVERY_SMOOTH_MAX_SECONDS) {
-      resetAnchor(target, now);
-    } else {
-      correctionAmount = difference;
-      correctionStartedAt = now;
-      correctionDuration = Math.max(900, Math.min(2200, Math.abs(difference) * 350));
-      positionAnchorAt = now;
-    }
-  } else {
-    resetAnchor(target, now);
-  }
-
-  syncMode = SYNC.RUNNING;
-  lastAdvanceAt = now;
-  lastPositionSample = target;
-  calibrationSamples = [];
-  recoverySamples = [];
-  startAnimation();
-}
-
-function processCalibrationSample(position, now, media) {
-  if (!hasFreshTimeline(media)) {
-    if (now - calibrationStartedAt >= CALIBRATION_TIMEOUT_MS)
-      enterStalled(now);
-    return;
-  }
-
-  calibrationSamples.push({ position, at: now });
-  calibrationSamples = pruneRecentSamples(
-    calibrationSamples,
-    now,
-    CALIBRATION_SAMPLE_WINDOW_MS
-  );
-
-  if (hasForwardProgress(
-    calibrationSamples,
-    CALIBRATION_MIN_SAMPLES,
-    CALIBRATION_MIN_SPAN_MS,
-    CALIBRATION_MIN_ADVANCE
-  )) {
-    startRunning(position, now);
-    return;
-  }
-
-  // A backwards movement during startup is likely a seek/reset, not proof
-  // that playback has begun. Restart the sample window at the new position.
-  if (calibrationSamples.length >= CALIBRATION_MIN_SAMPLES) {
-    const first = calibrationSamples[0];
-    const latest = calibrationSamples[calibrationSamples.length - 1];
-    if (latest.position - first.position < -0.25)
-      calibrationSamples = [{ position, at: now }];
-  }
-
-  if (now - calibrationStartedAt >= CALIBRATION_TIMEOUT_MS) {
-    resetAnchor(position, now);
-    syncMode = SYNC.STALLED;
-    recoverySamples = [];
-    renderPosition(position);
-  }
-}
-
-function processStalledSample(position, now, media) {
-  if (!hasFreshTimeline(media)) return;
-
-  recoverySamples.push({ position, at: now });
-  recoverySamples = pruneRecentSamples(
-    recoverySamples,
-    now,
-    RECOVERY_SAMPLE_WINDOW_MS
-  );
-
-  if (hasForwardProgress(recoverySamples, 2, 200, 0.12)) {
-    startRunning(position, now, true);
-    return;
-  }
-
-  lastPositionSample = position;
+function resetPlayhead(media, now, syncVisual = true) {
+  const position = getTimelinePosition(media, Date.now());
+  setPosition(position, now, syncVisual);
+  if (syncVisual)
+    renderPosition(visualPosition, true);
 }
 
 function synchronizePosition(media, now) {
-  const incomingPosition = Math.max(0, Number(media.position) || 0);
-
-  if (syncMode === SYNC.CALIBRATING) {
-    processCalibrationSample(incomingPosition, now, media);
-    return;
-  }
-
-  if (syncMode === SYNC.STALLED || syncMode === SYNC.WAITING) {
-    processStalledSample(incomingPosition, now, media);
-    return;
-  }
-
-  if (syncMode !== SYNC.RUNNING) {
-    beginCalibration(media, now);
-    return;
-  }
-
-  if (!hasFreshTimeline(media)) {
-    enterStalled(now);
-    return;
-  }
-
-  const currentPosition = getInterpolatedPosition(now);
+  const incomingPosition = getTimelinePosition(media, Date.now());
+  const currentPosition = getLogicalPosition(now);
   const difference = incomingPosition - currentPosition;
-  const previousSample = lastPositionSample;
-  const timeSinceLastAdvance = now - lastAdvanceAt;
 
-  if (previousSample !== null && incomingPosition > previousSample + 0.04)
-    lastAdvanceAt = now;
-
-  lastPositionSample = incomingPosition;
-
-  // A clear backwards seek or a large discontinuity while actively running
-  // should remain responsive. Ordinary drift is slewed instead of snapped.
-  if (difference >= seekSnapThreshold
-      && difference <= RECOVERY_SMOOTH_MAX_SECONDS
-      && timeSinceLastAdvance >= 1000) {
-    // A forward jump after a period without timeline advancement is more
-    // likely a buffer recovery than an intentional seek. Ease toward it.
-    positionAnchor = currentPosition;
-    positionAnchorAt = now;
-    correctionAmount = difference;
-    correctionStartedAt = now;
-    correctionDuration = Math.max(900, Math.min(2200, difference * 350));
-    lastAdvanceAt = now;
-    startAnimation();
+  // A small backwards correction is usually sample jitter. Keep the logical
+  // playhead monotonic; a clear backwards seek still resets immediately.
+  if (difference < -BACKWARD_SEEK_THRESHOLD_SECONDS ||
+      difference > FORWARD_SNAP_THRESHOLD_SECONDS) {
+    setPosition(incomingPosition, now, true);
+    renderPosition(visualPosition, true);
     return;
   }
 
-  if (difference < -0.8 || Math.abs(difference) >= seekSnapThreshold) {
-    resetAnchor(incomingPosition, now);
-    lastAdvanceAt = now;
-    renderPosition(incomingPosition);
-    return;
-  }
-
-  positionAnchor = currentPosition;
-  positionAnchorAt = now;
-  correctionAmount = Math.max(-maxSoftCorrection, Math.min(maxSoftCorrection, difference));
-  correctionStartedAt = now;
-  correctionDuration = 900;
+  setPosition(difference < 0 ? currentPosition : incomingPosition, now, false);
+  startAnimation();
 }
 
 function updateProgress() {
@@ -440,12 +257,18 @@ function updateProgress() {
     return;
 
   const now = performance.now();
-  if (now - lastAdvanceAt > STALL_TIMEOUT_MS) {
-    enterStalled(now);
-    return;
-  }
+  const targetPosition = getLogicalPosition(now);
+  const deltaMs = Math.max(0, now - lastFrameAt);
+  const gap = targetPosition - visualPosition;
+  const smoothingMs = gap > 0.6
+    ? RECOVERY_SMOOTHING_MS
+    : NORMAL_SMOOTHING_MS;
 
-  renderPosition(getInterpolatedPosition(now));
+  visualPosition = clampToDuration(
+    smoothPosition(visualPosition, targetPosition, deltaMs, smoothingMs)
+  );
+  lastFrameAt = now;
+  renderPosition(visualPosition);
   startAnimation();
 }
 
@@ -470,24 +293,14 @@ function render(media) {
   }
 
   if (media.playbackStatus === "Paused") {
-    if (trackChanged || previousState?.playbackStatus !== "Paused") {
-      currentTrackKey = nextTrackKey;
-      syncMode = SYNC.PAUSED;
-      resetAnchor(media.position, now);
-      calibrationSamples = [];
-      recoverySamples = [];
-      stopAnimation();
-    }
-
-    if (sleeping && sleepReason === "paused") {
-      schedulePausedSleep();
-      return;
-    }
-
+    currentTrackKey = nextTrackKey;
+    syncMode = SYNC.PAUSED;
+    stopAnimation();
+    setPosition(getReportedPosition(media, getLogicalPosition(now)), now, true);
     wakePage();
     renderMetadata(media);
     setCover(media.coverUrl || null);
-    renderPosition(getReportedPosition(media, positionAnchor));
+    renderPosition(visualPosition, true);
     schedulePausedSleep();
     return;
   }
@@ -502,33 +315,33 @@ function render(media) {
 
   if (trackChanged || !wasPlaying || syncMode === SYNC.PAUSED || syncMode === SYNC.SLEEPING) {
     currentTrackKey = nextTrackKey;
+    syncMode = SYNC.RUNNING;
     renderMetadata(media);
     setCover(media.coverUrl || null);
-    beginCalibration(media, now);
+    resetPlayhead(media, now, true);
+    startAnimation();
     return;
   }
 
   renderMetadata(media);
   setCover(media.coverUrl || null);
   synchronizePosition(media, now);
-
-  if (syncMode !== SYNC.RUNNING)
-    renderPosition(positionAnchor);
 }
 
 function handleVisibilityChange() {
   if (document.hidden) {
     if (syncMode === SYNC.RUNNING)
-      resetAnchor(getInterpolatedPosition(), performance.now());
+      setPosition(getLogicalPosition(), performance.now(), false);
     stopAnimation();
     return;
   }
 
   if (!state || sleeping) return;
   if (state.playbackStatus === "Playing") {
-    beginCalibration(state, performance.now());
+    syncMode = SYNC.RUNNING;
+    startAnimation();
   } else if (state.playbackStatus === "Paused") {
-    renderPosition(getReportedPosition(state, positionAnchor));
+    renderPosition(visualPosition, true);
   }
 }
 
@@ -541,10 +354,11 @@ window.addEventListener("pagehide", () => {
 window.addEventListener("pageshow", () => {
   if (state && !sleeping) {
     setCover(state.coverUrl || null);
-    if (state.playbackStatus === "Playing")
-      beginCalibration(state, performance.now());
-    else {
-      renderPosition(positionAnchor);
+    if (state.playbackStatus === "Playing") {
+      syncMode = SYNC.RUNNING;
+      startAnimation();
+    } else {
+      renderPosition(visualPosition, true);
       if (state.playbackStatus === "Paused")
         schedulePausedSleep();
     }

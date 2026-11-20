@@ -5,6 +5,7 @@ on:
     branches:
       - feature/obs-now-playing-m1
       - fix/tray-exit-dashboard-layout
+      - refactor/obs-progress-rendering-m5
   pull_request:
     branches:
       - master

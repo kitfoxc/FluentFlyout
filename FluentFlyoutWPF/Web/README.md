@@ -65,28 +65,36 @@ The optional `timelineLastUpdatedTime` field carries the SMTC sample timestamp.
 It is metadata only: FluentFlyout's original SMTC position calculation and
 native media seek bar are unchanged.
 
-The built-in page uses a small progress synchronization state machine:
+The built-in page uses the original FluentFlyout timeline model rather than
+waiting for multiple advancing Position samples. It calculates the logical
+playhead from the latest SMTC Position plus the elapsed time since
+LastUpdatedTime. If that timestamp is missing or a sentinel, the server's
+UpdatedAt timestamp is used as a fallback anchor; if neither is usable, the
+reported Position is used as the initial anchor. A stale but valid SMTC
+timestamp is not treated as proof that playback has stopped. The calculated
+position is bounded by the reported track duration when known.
 
-- `Waiting/Calibrating`: on track start or resume, hold the playhead until at
-  least three fresh samples show forward movement over a minimum observation
-  window. The page does not extrapolate during this phase.
-- `Running`: interpolate locally with a monotonic browser clock and apply
-  small corrections gradually.
-- `Stalled`: if the timeline stops advancing or its sample timestamp becomes
-  stale, freeze the playhead. Require consecutive advancing samples before
-  resuming; short forward recovery gaps are eased rather than snapped.
-- `Paused`: keep a static playhead and start an idle timer.
+The renderer keeps separate logical and visual playheads. The logical
+playhead is authoritative and advances using the browser's monotonic clock.
+The visual playhead follows it with time-based exponential smoothing, using a
+short time constant for ordinary drift and a longer one for forward recovery
+gaps. Clear backward seeks and very large discontinuities reset immediately;
+small backwards sample noise is ignored. The progress fill is updated with
+CSS transform at animation-frame frequency, while the displayed time text is
+throttled to five updates per second. There is no sample-count calibration or
+Position-advance requirement, so providers that publish a valid initial
+timeline but do not continuously change Position can still show a moving
+playhead.
 
-A large discontinuity during normal playback remains responsive as a seek.
-A forward discontinuity after a detected stall is treated as a likely buffer
-recovery and eased over a short interval. SMTC does not expose a universal
-buffering flag, so stall detection is heuristic and may need tuning for
-individual media sources.
+SMTC does not expose a universal buffering flag. If a provider reports
+Playing while audio is actually buffering, the logical playhead may continue
+to advance until a new timeline anchor arrives. A later forward correction is
+visually eased when reasonably small; a clear seek or very large discontinuity
+is applied immediately.
 
-For resource hygiene, the built-in page runs no animation frame while waiting,
-stalled, paused, or asleep. It enters sleep immediately when no media is
-available or playback is stopped/closed, and after five minutes of continuous
-pause. Sleep hides and detaches the widget, releases album-art image resources,
+For resource hygiene, the built-in page runs no animation frame while paused
+or asleep. It enters sleep immediately when no media is available or playback
+is stopped/closed, and after five minutes of continuous pause. Sleep hides and detaches the widget, releases album-art image resources,
 and clears idle timers. The WebSocket listener remains connected so a new track
 or resumed playback can wake the page immediately. The single media callback
 is retained intentionally; no per-message listeners or animation loops are

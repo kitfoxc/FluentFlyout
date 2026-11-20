@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("./progress-utils.js", import.meta.url), "utf8");
-const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const moduleUrl = "data:text/javascript;base64," + Buffer.from(source).toString("base64");
 const {
+  clampPosition,
   getReportedPosition,
-  hasForwardProgress,
-  isTimelineFresh,
-  pruneRecentSamples
+  getTimelinePosition,
+  smoothPosition
 } = await import(moduleUrl);
 
 test("a reported zero position is not replaced by the previous anchor", () => {
@@ -18,72 +18,65 @@ test("a reported zero position is not replaced by the previous anchor", () => {
   assert.equal(getReportedPosition({ position: Number.NaN }, 42), 42);
 });
 
-test("missing and sentinel SMTC timestamps use event-arrival freshness", () => {
-  const now = Date.parse("2026-11-20T00:00:00.000Z");
-  assert.equal(isTimelineFresh({}, now), true);
-  assert.equal(isTimelineFresh({ timelineLastUpdatedTime: null }, now), true);
-  assert.equal(
-    isTimelineFresh({ timelineLastUpdatedTime: "1601-01-01T00:00:00.000Z" }, now),
-    true
-  );
+test("timeline position advances from the SMTC LastUpdatedTime without new Position samples", () => {
+  const now = Date.parse("2026-11-21T00:00:05.000Z");
+  const media = {
+    position: 30,
+    duration: 200,
+    timelineLastUpdatedTime: "2026-11-21T00:00:00.000Z"
+  };
+  assert.equal(getTimelinePosition(media, now), 35);
 });
 
-test("a real timeline timestamp is fresh only inside the allowed age window", () => {
-  const now = Date.parse("2026-11-20T00:00:00.000Z");
-  assert.equal(
-    isTimelineFresh({ timelineLastUpdatedTime: new Date(now - 4000).toISOString() }, now, 4500),
-    true
-  );
-  assert.equal(
-    isTimelineFresh({ timelineLastUpdatedTime: new Date(now - 5000).toISOString() }, now, 4500),
-    false
-  );
-  assert.equal(
-    isTimelineFresh({ timelineLastUpdatedTime: new Date(now + 1500).toISOString() }, now, 4500),
-    false
-  );
+test("a stale timestamp continues extrapolating and is capped at track duration", () => {
+  const now = Date.parse("2026-11-21T00:05:00.000Z");
+  const media = {
+    position: 30,
+    duration: 200,
+    timelineLastUpdatedTime: "2026-11-21T00:00:00.000Z"
+  };
+  assert.equal(getTimelinePosition(media, now), 200);
 });
 
-test("the calibration window retains advancing samples from a 1.5-second source", () => {
-  const samples = pruneRecentSamples([
-    { position: 10, at: 0 },
-    { position: 11.5, at: 1500 },
-    { position: 13, at: 3000 }
-  ], 3000, 5000);
-
-  assert.equal(samples.length, 3);
-  assert.equal(hasForwardProgress(samples, 3, 500, 0.12), true);
+test("UpdatedAt is used when the SMTC timestamp is missing or a sentinel", () => {
+  const now = Date.parse("2026-11-21T00:00:04.000Z");
+  assert.equal(getTimelinePosition({
+    position: 12,
+    duration: 100,
+    timelineLastUpdatedTime: "1601-01-01T00:00:00.000Z",
+    updatedAt: "2026-11-21T00:00:01.000Z"
+  }, now), 15);
 });
 
-test("the calibration window accommodates SMTC updates every 4.5 seconds", () => {
-  const samples = pruneRecentSamples([
-    { position: 20, at: 0 },
-    { position: 24.5, at: 4500 },
-    { position: 29, at: 9000 }
-  ], 9000, 10_000);
-
-  assert.equal(samples.length, 3);
-  assert.equal(hasForwardProgress(samples, 3, 500, 0.12), true);
+test("a timestamp too far in the future falls back to the reported position", () => {
+  const now = Date.parse("2026-11-21T00:00:00.000Z");
+  assert.equal(getTimelinePosition({
+    position: 12,
+    duration: 100,
+    timelineLastUpdatedTime: "2026-11-21T00:00:05.000Z",
+    updatedAt: null
+  }, now), 12);
 });
 
-test("the recovery window permits slow but fresh advancing samples", () => {
-  const samples = pruneRecentSamples([
-    { position: 40, at: 0 },
-    { position: 44, at: 4000 }
-  ], 4000, 9000);
-
-  assert.equal(samples.length, 2);
-  assert.equal(hasForwardProgress(samples, 2, 200, 0.12), true);
+test("invalid and negative positions are clamped safely", () => {
+  assert.equal(clampPosition(Number.NaN, 100), 0);
+  assert.equal(clampPosition(-5, 100), 0);
+  assert.equal(clampPosition(120, 100), 100);
+  assert.equal(getTimelinePosition({ position: Number.POSITIVE_INFINITY, duration: 0 }), 0);
 });
 
-test("expired samples and non-advancing samples cannot calibrate playback", () => {
-  const samples = pruneRecentSamples([
-    { position: 5, at: 0 },
-    { position: 5, at: 1500 },
-    { position: 5, at: 3000 },
-    { position: 6, at: -1 }
-  ], 3000, 2500);
+test("duration zero remains an unknown duration without an artificial upper bound", () => {
+  assert.equal(clampPosition(250, 0), 250);
+});
 
-  assert.equal(samples.length, 2);
-  assert.equal(hasForwardProgress(samples, 3, 500, 0.12), false);
+test("exponential smoothing is time-based and approaches the target without overshoot", () => {
+  const halfway = smoothPosition(0, 10, Math.log(2) * 100, 100);
+  assert.equal(halfway, 5);
+  const next = smoothPosition(halfway, 10, 1000, 100);
+  assert.ok(next > halfway);
+  assert.ok(next < 10);
+});
+
+test("zero elapsed time does not change the visual position", () => {
+  assert.equal(smoothPosition(10, 20, 0, 150), 10);
 });
