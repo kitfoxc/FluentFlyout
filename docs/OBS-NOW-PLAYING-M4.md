@@ -70,11 +70,22 @@ Scope: stability, performance, configuration validation, and theme-resource safe
 
 ## Implementation status
 
-- [x] M4.1 browser progress fixes — code applied; CI verification pending.
-- [x] M4.2 media and cover-art performance — code applied; CI verification pending.
-- [x] M4.3 WebSocket lifecycle and backpressure — code applied; CI verification pending.
-- [x] M4.4 configuration validation — code applied; CI verification pending.
-- [x] M4.5 theme filesystem boundary — code applied; CI verification pending.
-- [x] M4.6 browser and OBS service tests plus CI integration — code applied; CI verification pending. MSIX/runtime packaging and live x64/ARM64 installation remain manual release gates.
+- [x] M4.1 browser progress correctness — implemented and covered by passing Node tests.
+- [x] M4.2 media and cover-art performance — implemented; Debug and Release builds pass.
+- [x] M4.3 WebSocket lifecycle and backpressure — implemented and covered by passing service tests.
+- [x] M4.4 configuration validation — implemented; Debug and Release builds pass.
+- [x] M4.5 theme filesystem boundary — implemented and covered by path/reparse-point tests.
+- [x] M4.6 automated tests and architecture builds — Node tests, 5 OBS service tests, Debug, Release x64, and Release ARM64 all pass.
+- [ ] M4.6.1 packaged-runtime acceptance — install the actual MSIX on a clean machine, verify the required .NET 10 Desktop and ASP.NET Core runtimes, launch FluentFlyout, and check `http://127.0.0.1:<configured-port>/api/health`.
 
-A task is complete only after its code review and relevant CI/acceptance checks pass. If runtime-only behavior cannot be proven by CI, it remains explicitly marked for manual verification.
+### CI verification
+
+- Workflow run: [#44644100982](https://github.com/kitfoxc/FluentFlyout/actions/runs/44644100982) — success.
+- Browser progress tests: passed.
+- OBS service tests: 5 passed, 0 failed, 0 skipped.
+- WPF Debug build: succeeded.
+- WPF Release x64 build: succeeded.
+- WPF Release ARM64 build: succeeded.
+- Build errors: 0. The build still reports 36 existing compiler warnings and the solution restore emits NU1503 for the MSIX packaging project; neither prevented the WPF builds.
+
+The code and CI gates above are complete. Actual MSIX installation and runtime dependency verification remain an explicit manual release gate because the current CI workflow builds the WPF app but does not install the packaged app on a clean Windows machine.
