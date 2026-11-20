@@ -15,8 +15,10 @@ public sealed class SmtcTimelineClockTests
     {
         var clock = new SmtcTimelineClock();
         clock.Observe("player", Sec(10), Sec(60), T0, true, Ticks(0));
+        Assert.Equal(10, clock.Estimate("player", Ticks(0.5))!.Value.TotalSeconds, 3);
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(1), true, Ticks(1));
         Assert.Equal(12, clock.Estimate("player", Ticks(2))!.Value.TotalSeconds, 3);
-        Assert.Equal(15, clock.Estimate("player", Ticks(90))!.Value.TotalSeconds, 3);
+        Assert.Equal(16, clock.Estimate("player", Ticks(90))!.Value.TotalSeconds, 3);
     }
 
     [Fact]
@@ -24,7 +26,8 @@ public sealed class SmtcTimelineClockTests
     {
         var clock = new SmtcTimelineClock();
         clock.Observe("player", Sec(10), Sec(60), T0, true, Ticks(0));
-        clock.Observe("player", Sec(10), Sec(60), T0, false, Ticks(2));
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(1), true, Ticks(1));
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(1), false, Ticks(2));
         Assert.Equal(12, clock.Estimate("player", Ticks(60))!.Value.TotalSeconds, 3);
     }
 
@@ -33,8 +36,9 @@ public sealed class SmtcTimelineClockTests
     {
         var clock = new SmtcTimelineClock();
         clock.Observe("player", Sec(10), Sec(60), T0, true, Ticks(0));
-        clock.Observe("player", Sec(10), Sec(60), T0, true, Ticks(4));
-        Assert.Equal(15, clock.Estimate("player", Ticks(12))!.Value.TotalSeconds, 3);
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(1), true, Ticks(1));
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(1), true, Ticks(4));
+        Assert.Equal(16, clock.Estimate("player", Ticks(12))!.Value.TotalSeconds, 3);
     }
 
     [Fact]
@@ -42,8 +46,9 @@ public sealed class SmtcTimelineClockTests
     {
         var clock = new SmtcTimelineClock();
         clock.Observe("player", Sec(10), Sec(60), T0, true, Ticks(0));
-        clock.Observe("player", Sec(10), Sec(60), T0.AddSeconds(2), true, Ticks(2));
-        Assert.Equal(10, clock.Estimate("player", Ticks(9))!.Value.TotalSeconds, 3);
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(1), true, Ticks(1));
+        clock.Observe("player", Sec(11), Sec(60), T0.AddSeconds(2), true, Ticks(2));
+        Assert.Equal(11, clock.Estimate("player", Ticks(9))!.Value.TotalSeconds, 3);
         clock.Observe("player", Sec(12), Sec(60), T0.AddSeconds(4), true, Ticks(4));
         Assert.InRange(clock.Estimate("player", Ticks(5))!.Value.TotalSeconds, 12, 13.1);
     }
@@ -63,9 +68,11 @@ public sealed class SmtcTimelineClockTests
     {
         var clock = new SmtcTimelineClock();
         clock.Observe("player", Sec(2), Sec(40), T0, true, Ticks(0));
-        clock.Observe("player", Sec(2), Sec(40), T0, true, Ticks(4));
-        Assert.Equal(1000, clock.RemainingProjectionMilliseconds("player", Ticks(4)));
-        Assert.Equal(0, clock.RemainingProjectionMilliseconds("player", Ticks(6)));
+        Assert.Equal(0, clock.RemainingProjectionMilliseconds("player", Ticks(0)));
+        clock.Observe("player", Sec(3), Sec(40), T0.AddSeconds(1), true, Ticks(1));
+        clock.Observe("player", Sec(3), Sec(40), T0.AddSeconds(1), true, Ticks(4));
+        Assert.Equal(2000, clock.RemainingProjectionMilliseconds("player", Ticks(4)));
+        Assert.Equal(0, clock.RemainingProjectionMilliseconds("player", Ticks(7)));
     }
 
     [Fact]
