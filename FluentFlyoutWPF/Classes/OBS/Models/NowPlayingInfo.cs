@@ -31,6 +31,12 @@ public sealed record NowPlayingInfo
     public double Duration { get; init; }
 
     /// <summary>
+    /// Remaining milliseconds the browser may safely extrapolate this snapshot.
+    /// Zero means paused, buffering, or too long since the last trustworthy sample.
+    /// </summary>
+    public int PositionProjectionMs { get; init; }
+
+    /// <summary>
     /// SMTC timestamp for the reported timeline position. This is metadata for
     /// external presentation clients and does not alter FluentFlyout's own
     /// media-position calculation.

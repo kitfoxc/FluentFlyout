@@ -28,6 +28,7 @@ public sealed class ObsWebServer : IAsyncDisposable
     private readonly CoverArtStore _coverArtStore;
     private readonly WebThemeManager _themeManager;
     private readonly Func<string> _selectedThemeFileName;
+    private readonly Func<NowPlayingInfo, NowPlayingInfo> _projectState;
     private readonly WebSocketHub _hub = new();
     private readonly string _webRoot;
     private readonly string _token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -49,12 +50,14 @@ public sealed class ObsWebServer : IAsyncDisposable
         CoverArtStore coverArtStore,
         WebThemeManager themeManager,
         Func<string> selectedThemeFileName,
-        int port = DefaultPort)
+        int port = DefaultPort,
+        Func<NowPlayingInfo, NowPlayingInfo>? projectState = null)
     {
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
         _coverArtStore = coverArtStore ?? throw new ArgumentNullException(nameof(coverArtStore));
         _themeManager = themeManager ?? throw new ArgumentNullException(nameof(themeManager));
         _selectedThemeFileName = selectedThemeFileName ?? throw new ArgumentNullException(nameof(selectedThemeFileName));
+        _projectState = projectState ?? (state => state);
         if (port is < 1024 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(port));
 
@@ -113,7 +116,7 @@ public sealed class ObsWebServer : IAsyncDisposable
             await next(context);
         });
 
-            app.UseStaticFiles();
+        app.UseStaticFiles();
         app.UseWebSockets(new WebSocketOptions
         {
             KeepAliveInterval = TimeSpan.FromSeconds(20)
@@ -343,13 +346,16 @@ public sealed class ObsWebServer : IAsyncDisposable
 
     private object CreateEnvelope(string type, NowPlayingInfo state)
     {
+        // Reprojection is intentionally local to serialization; the retained
+        // media state remains an immutable record of the last SMTC observation.
+        var live = _projectState(state);
         return new
         {
             protocol = "1.0",
             type,
             sequence = state.Sequence,
-            timestamp = state.UpdatedAt,
-            data = state
+            timestamp = DateTimeOffset.UtcNow,
+            data = live
         };
     }
 

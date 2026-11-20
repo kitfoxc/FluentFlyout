@@ -171,7 +171,8 @@ public partial class MainWindow : MicaWindow
             _coverArtStore,
             _webThemeManager,
             () => SettingsManager.Current.WebSocketThemeFileName,
-            SettingsManager.Current.ObsNowPlayingPort);
+            SettingsManager.Current.ObsNowPlayingPort,
+            ProjectObsMediaState);
 
         if (SettingsManager.Current.Startup == true) // add to startup programs if enabled, needs improvement
         {
@@ -860,6 +861,7 @@ public partial class MainWindow : MicaWindow
                     PlayerName = playerName,
                     PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
                     Position = ObserveTimeline(session, timeline).TotalSeconds,
+                    PositionProjectionMs = _timelineClock.RemainingProjectionMilliseconds(session.Id),
                     Duration = duration,
                     TimelineLastUpdatedTime = timeline.LastUpdatedTime,
                     IsAvailable = true
@@ -882,12 +884,27 @@ public partial class MainWindow : MicaWindow
             PlayerName = playerName,
             PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
             Position = ObserveTimeline(session, timeline).TotalSeconds,
+            PositionProjectionMs = _timelineClock.RemainingProjectionMilliseconds(session.Id),
             Duration = duration,
             TimelineLastUpdatedTime = timeline.LastUpdatedTime,
             CoverId = coverId,
             CoverUrl = coverId is null ? null : $"/api/covers/{coverId}",
             IsAvailable = true
         });
+    }
+
+    /// <summary>Reproject a cached OBS snapshot at send time (including reconnects).</summary>
+    private NowPlayingInfo ProjectObsMediaState(NowPlayingInfo state)
+    {
+        if (state.SessionId is not { } sessionId ||
+            _timelineClock.Estimate(sessionId) is not { } position)
+            return state;
+
+        return state with
+        {
+            Position = position.TotalSeconds,
+            PositionProjectionMs = _timelineClock.RemainingProjectionMilliseconds(sessionId)
+        };
     }
 
     private static NowPlayingPlaybackStatus ToObsPlaybackStatus(
@@ -921,6 +938,7 @@ public partial class MainWindow : MicaWindow
             {
                 PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
                 Position = ObserveTimeline(session, timeline, playback?.PlaybackStatus).TotalSeconds,
+                PositionProjectionMs = _timelineClock.RemainingProjectionMilliseconds(session.Id),
                 Duration = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds),
                 TimelineLastUpdatedTime = timeline.LastUpdatedTime
             });

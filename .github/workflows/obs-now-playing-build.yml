@@ -1,9 +1,10 @@
-name: OBS Now Playing build
+name: Windows SMTC and WebSocket CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - feature/obs-now-playing-m1
+      - refactor/smtc-timeline-websocket
   pull_request:
     branches:
       - master
@@ -26,7 +27,7 @@ jobs:
         run: dotnet restore FluentFlyout.sln
       - name: Restore OBS service tests
         run: dotnet restore FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj
-      - name: Test OBS services
+      - name: Test SMTC timeline and OBS services
         run: dotnet test FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj --configuration Debug --no-restore
       - name: Build WPF application
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Debug --no-restore

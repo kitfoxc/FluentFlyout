@@ -130,6 +130,26 @@ public sealed class SmtcTimelineClock
                 : null;
     }
 
+    /// <summary>
+    /// Remaining extrapolation budget at the moment a snapshot is sent.
+    /// Clients must not restart a fresh 5-second clock for an old sample.
+    /// </summary>
+    public int RemainingProjectionMilliseconds(string sessionId, long? monotonicTicks = null)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return 0;
+        long now = monotonicTicks ?? Stopwatch.GetTimestamp();
+        lock (_sync)
+        {
+            if (!_anchors.TryGetValue(sessionId, out var anchor) ||
+                !anchor.IsPlaying || !anchor.CanAdvance)
+                return 0;
+
+            double age = Math.Max(0, (double)(now - anchor.Ticks) / Stopwatch.Frequency);
+            return (int)Math.Max(0, Math.Ceiling((MaximumExtrapolationSeconds - age) * 1000));
+        }
+    }
+
     public void Remove(string sessionId)
     {
         if (string.IsNullOrEmpty(sessionId))

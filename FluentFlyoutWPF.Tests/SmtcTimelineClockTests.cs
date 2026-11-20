@@ -59,6 +59,16 @@ public sealed class SmtcTimelineClockTests
     }
 
     [Fact]
+    public void ProjectionBudgetDoesNotResetForDuplicateSamples()
+    {
+        var clock = new SmtcTimelineClock();
+        clock.Observe("player", Sec(2), Sec(40), T0, true, Ticks(0));
+        clock.Observe("player", Sec(2), Sec(40), T0, true, Ticks(4));
+        Assert.Equal(1000, clock.RemainingProjectionMilliseconds("player", Ticks(4)));
+        Assert.Equal(0, clock.RemainingProjectionMilliseconds("player", Ticks(6)));
+    }
+
+    [Fact]
     public void SessionsAreIndependentAndRemovalClearsTheirState()
     {
         var clock = new SmtcTimelineClock();
