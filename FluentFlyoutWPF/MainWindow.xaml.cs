@@ -7,10 +7,10 @@ using FluentFlyout.Classes.Utils;
 using FluentFlyout.Controls;
 using FluentFlyout.Windows;
 using FluentFlyoutWPF.Classes;
-using FluentFlyoutWPF.Classes.Services;
 using FluentFlyoutWPF.Classes.OBS.Models;
-using FluentFlyoutWPF.Classes.OBS.Services;
 using FluentFlyoutWPF.Classes.OBS.Server;
+using FluentFlyoutWPF.Classes.OBS.Services;
+using FluentFlyoutWPF.Classes.Services;
 using FluentFlyoutWPF.Classes.Utils;
 using FluentFlyoutWPF.ViewModels;
 using FluentFlyoutWPF.Windows;
@@ -1803,6 +1803,52 @@ public partial class MainWindow : MicaWindow
         else
         {
             _positionTimer.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Applies the current OBS integration settings. Calls are serialized because
+    /// changing the port requires stopping and rebuilding the Kestrel listener.
+    /// </summary>
+    internal void ApplyObsServerSettings()
+    {
+        _ = ApplyObsServerSettingsAsync();
+    }
+
+    private async Task StartObsWebServerAsync()
+    {
+        await ApplyObsServerSettingsAsync();
+    }
+
+    private async Task ApplyObsServerSettingsAsync()
+    {
+        await _obsServerGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_obsWebServer == null || _isCleaningUp)
+                return;
+
+            if (_obsWebServer.IsRunning)
+                await _obsWebServer.StopAsync().ConfigureAwait(false);
+
+            if (!SettingsManager.Current.ObsNowPlayingEnabled)
+            {
+                Logger.Info("WebSocket server is disabled in settings");
+                return;
+            }
+
+            if (_obsWebServer.Port != SettingsManager.Current.ObsNowPlayingPort)
+                _obsWebServer.ReconfigurePort(SettingsManager.Current.ObsNowPlayingPort);
+
+            await _obsWebServer.StartAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to apply WebSocket server settings");
+        }
+        finally
+        {
+            _obsServerGate.Release();
         }
     }
 
