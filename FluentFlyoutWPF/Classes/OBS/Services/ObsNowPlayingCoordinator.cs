@@ -65,11 +65,29 @@ public sealed class ObsNowPlayingCoordinator
         _getThemeFolderName = getThemeFolderName ?? throw new ArgumentNullException(nameof(getThemeFolderName));
     }
 
-    /// <summary>Marks the coordinator as available for settings and shutdown operations.</summary>
+    /// <summary>
+    /// Marks the coordinator as available and, when already opted in, subscribes before
+    /// MainWindow attaches its original UI handlers.
+    /// </summary>
     public void Start()
     {
-        if (Volatile.Read(ref _stopping) == 0)
-            Interlocked.Exchange(ref _started, 1);
+        if (Volatile.Read(ref _stopping) != 0 ||
+            Interlocked.CompareExchange(ref _started, 1, 0) != 0)
+            return;
+
+        try
+        {
+            if (_isEnabled())
+            {
+                Subscribe();
+                RefreshMediaSource();
+            }
+        }
+        catch (Exception ex)
+        {
+            Unsubscribe();
+            Logger.Error(ex, "Failed to initialize OBS SMTC event subscriptions");
+        }
     }
 
     public void RefreshMediaSource()
