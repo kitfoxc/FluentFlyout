@@ -23,6 +23,10 @@ function parseAnchorTimestamp(value, now) {
   return timestamp;
 }
 
+export function hasValidTimelineTimestamp(media, now = Date.now()) {
+  return parseAnchorTimestamp(media?.timelineLastUpdatedTime, now) !== null;
+}
+
 export function clampPosition(position, duration = 0) {
   const safePosition = Number.isFinite(position) ? Math.max(0, position) : 0;
   const safeDuration = Number(duration);

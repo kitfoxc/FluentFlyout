@@ -8,6 +8,7 @@ const {
   clampPosition,
   getReportedPosition,
   getTimelinePosition,
+  hasValidTimelineTimestamp,
   smoothPosition
 } = await import(moduleUrl);
 
@@ -79,4 +80,15 @@ test("exponential smoothing is time-based and approaches the target without over
 
 test("zero elapsed time does not change the visual position", () => {
   assert.equal(smoothPosition(10, 20, 0, 150), 10);
+});
+
+test("SMTC timestamp validity is independent of the fallback UpdatedAt anchor", () => {
+  const now = Date.parse("2026-11-21T00:00:00.000Z");
+  assert.equal(hasValidTimelineTimestamp({
+    timelineLastUpdatedTime: "1601-01-01T00:00:00.000Z",
+    updatedAt: "2026-11-21T00:00:00.000Z"
+  }, now), false);
+  assert.equal(hasValidTimelineTimestamp({
+    timelineLastUpdatedTime: "2026-11-21T00:00:00.000Z"
+  }, now), true);
 });

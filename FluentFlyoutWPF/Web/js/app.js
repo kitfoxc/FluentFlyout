@@ -1,6 +1,7 @@
 import {
   getReportedPosition,
   getTimelinePosition,
+  hasValidTimelineTimestamp,
   smoothPosition
 } from "./progress-utils.js";
 
@@ -50,6 +51,7 @@ let logicalAnchorAt = performance.now();
 let visualPosition = 0;
 let lastFrameAt = 0;
 let lastTextRenderAt = 0;
+let lastReportedPosition = null;
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -130,6 +132,7 @@ function enterSleep(reason, clearMedia = false) {
     currentTrackKey = null;
     logicalAnchor = 0;
     visualPosition = 0;
+    lastReportedPosition = null;
   }
 }
 
@@ -228,14 +231,47 @@ function setCover(url) {
 
 function resetPlayhead(media, now, syncVisual = true) {
   const position = getTimelinePosition(media, Date.now());
+  lastReportedPosition = getReportedPosition(media);
   setPosition(position, now, syncVisual);
   if (syncVisual)
     renderPosition(visualPosition, true);
 }
 
 function synchronizePosition(media, now) {
-  const incomingPosition = getTimelinePosition(media, Date.now());
+  const wallNow = Date.now();
+  const reportedPosition = getReportedPosition(media);
   const currentPosition = getLogicalPosition(now);
+
+  // UpdatedAt is only a startup fallback when SMTC does not provide a usable
+  // LastUpdatedTime. Reusing each event's UpdatedAt would continually pull the
+  // playhead back to a repeated, unchanged Position value.
+  if (!hasValidTimelineTimestamp(media, wallNow)) {
+    const previousReportedPosition = lastReportedPosition;
+    lastReportedPosition = reportedPosition;
+
+    if (previousReportedPosition !== null &&
+        reportedPosition < previousReportedPosition - BACKWARD_SEEK_THRESHOLD_SECONDS) {
+      setPosition(reportedPosition, now, true);
+      renderPosition(visualPosition, true);
+      return;
+    }
+
+    const rawDifference = reportedPosition - currentPosition;
+    if (rawDifference > FORWARD_SNAP_THRESHOLD_SECONDS) {
+      setPosition(reportedPosition, now, true);
+      renderPosition(visualPosition, true);
+      return;
+    }
+
+    if (rawDifference > 0.6)
+      setPosition(reportedPosition, now, false);
+
+    startAnimation();
+    return;
+  }
+
+  lastReportedPosition = reportedPosition;
+  const incomingPosition = getTimelinePosition(media, wallNow);
   const difference = incomingPosition - currentPosition;
 
   // A small backwards correction is usually sample jitter. Keep the logical
@@ -296,7 +332,8 @@ function render(media) {
     currentTrackKey = nextTrackKey;
     syncMode = SYNC.PAUSED;
     stopAnimation();
-    setPosition(getReportedPosition(media, getLogicalPosition(now)), now, true);
+    lastReportedPosition = getReportedPosition(media, getLogicalPosition(now));
+    setPosition(lastReportedPosition, now, true);
     wakePage();
     renderMetadata(media);
     setCover(media.coverUrl || null);

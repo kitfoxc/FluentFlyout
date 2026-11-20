@@ -69,9 +69,11 @@ The built-in page uses the original FluentFlyout timeline model rather than
 waiting for multiple advancing Position samples. It calculates the logical
 playhead from the latest SMTC Position plus the elapsed time since
 LastUpdatedTime. If that timestamp is missing or a sentinel, the server's
-UpdatedAt timestamp is used as a fallback anchor; if neither is usable, the
-reported Position is used as the initial anchor. A stale but valid SMTC
-timestamp is not treated as proof that playback has stopped. The calculated
+UpdatedAt timestamp is used as the initial fallback anchor. Subsequent
+updates without a valid SMTC timestamp do not repeatedly re-anchor an
+unchanged Position; the browser continues from its local monotonic clock and
+uses clear Position discontinuities only as seek/reset signals. A stale but
+valid SMTC timestamp is not treated as proof that playback has stopped. The calculated
 position is bounded by the reported track duration when known.
 
 The renderer keeps separate logical and visual playheads. The logical
