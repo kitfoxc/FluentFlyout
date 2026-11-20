@@ -46,6 +46,7 @@ public partial class MainWindow : MicaWindow
     private readonly SemaphoreSlim _obsServerGate = new(1, 1);
     private ObsWebServer? _obsWebServer;
     private int _cleanupStarted;
+    private Task? _cleanupTask;
 
     internal MediaStateStore MediaStateStore => _mediaStateStore;
 
@@ -233,6 +234,8 @@ public partial class MainWindow : MicaWindow
             }
         }
 
+        HandlePlayBackState(GetActiveMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
+
         string previousVersion = SettingsManager.Current.LastKnownVersion;
         _ = CheckForExperimentsOnStartupAsync(previousVersion);
 
@@ -412,21 +415,13 @@ public partial class MainWindow : MicaWindow
     {
         UpdateTaskbar();
 
+        var activeSession = GetActiveMediaSession();
+        HandlePlayBackState(activeSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
+
         if (IsVisible)
         {
-            var activeSession = GetActiveMediaSession();
-
             // UpdateUI handles a null value internally so we haven't checked for null here.
             UpdateUI(activeSession!);
-
-            if (activeSession != null)
-            {
-                HandlePlayBackState(activeSession.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
-            }
-            else
-            {
-                HandlePlayBackState(GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed);
-            }
         }
     }
 
@@ -964,6 +959,7 @@ public partial class MainWindow : MicaWindow
             PublishObsMediaState();
 
         var focusedSession = GetActiveMediaSession();
+        HandlePlayBackState(focusedSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
         if (focusedSession == null)
         {
             taskbarWindow?.UpdateUi("-", "-", null, GlobalSystemMediaTransportControlsSessionPlaybackStatus.Closed);
@@ -981,10 +977,7 @@ public partial class MainWindow : MicaWindow
         }
 
         if (IsVisible)
-        {
             UpdateUI(focusedSession);
-            HandlePlayBackState(playbackInfo?.PlaybackStatus);
-        }
     }
 
     // for determining whether MediaPropertyChanged has no changes
@@ -1107,19 +1100,22 @@ public partial class MainWindow : MicaWindow
             string.Equals(obsSession.Id, mediaSession.Id, StringComparison.Ordinal))
             PublishObsTimelineState(obsSession, timelineProperties);
 
-        if (GetActiveMediaSession() is not { } session || session.Id != mediaSession.Id) return;
+        if (GetActiveMediaSession() is not { } session || session.Id != mediaSession.Id)
+            return;
 
-        if (_seekBarEnabled)
+        // Never synchronously wait for the UI thread from an SMTC callback. In
+        // particular, shutdown must be able to drain callbacks without deadlocking.
+        Dispatcher.BeginInvoke(new Action(() =>
         {
-            Dispatcher.Invoke(() =>
-            {
-                if (Visibility != Visibility.Visible || _isHiding || _isDragging) return;
+            if (_isCleaningUp)
+                return;
 
-                if (_timelineClock.Estimate(session.Id) is { } position)
-                    UpdateSeekbarCurrentDuration(position);
-                HandlePlayBackState(session.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
-            });
-        }
+            if (_seekBarEnabled && Visibility == Visibility.Visible && !_isHiding && !_isDragging &&
+                _timelineClock.Estimate(session.Id) is { } position)
+                UpdateSeekbarCurrentDuration(position);
+
+            HandlePlayBackState(session.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
+        }));
     }
 
     private void MediaManager_OnAnySessionClosed(MediaSession mediaSession)
@@ -1737,39 +1733,100 @@ public partial class MainWindow : MicaWindow
             ? timeline.EndTime - timeline.StartTime
             : TimeSpan.Zero;
 
+        bool hasReliableTimeline = timeline.MaxSeekTime.TotalSeconds >= 1.0;
         return _timelineClock.Observe(
-            session.Id, timeline.Position, duration, timeline.LastUpdatedTime, playing);
+            session.Id,
+            timeline.Position,
+            duration,
+            timeline.LastUpdatedTime,
+            playing,
+            hasReliableTimeline: hasReliableTimeline);
     }
 
     private void SeekbarUpdateUi(object? sender, EventArgs e)
     {
-        if (!_seekBarEnabled || Visibility != Visibility.Visible || _isHiding || _isDragging)
+        if (_isCleaningUp)
             return;
 
-        if (GetActiveMediaSession() is not { } session)
-            return;
+        var activeSession = GetActiveMediaSession();
+        var obsSession = SettingsManager.Current.ObsNowPlayingEnabled
+            ? GetObsMediaSession()
+            : null;
 
-        if (_timelineClock.Estimate(session.Id) is { } position)
-            UpdateSeekbarCurrentDuration(position);
+        bool activeIsPlaying = activeSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
+            == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        bool obsIsPlaying = obsSession?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
+            == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+
+        bool updateNativeSeekbar = _seekBarEnabled && IsVisible && !_isHiding && !_isDragging &&
+            activeIsPlaying;
+        bool updateObsFromActive = obsIsPlaying &&
+            activeSession != null &&
+            string.Equals(activeSession.Id, obsSession?.Id, StringComparison.Ordinal);
+
+        // Polling is intentional: some SMTC providers publish duration and playback
+        // state but never raise timeline-position events. The shared clock can then
+        // use its monotonic fallback and OBS receives regular fresh snapshots.
+        if (activeSession != null && (updateNativeSeekbar || updateObsFromActive))
+        {
+            try
+            {
+                var timeline = activeSession.ControlSession.GetTimelineProperties();
+                var position = ObserveTimeline(
+                    activeSession,
+                    timeline,
+                    GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing);
+
+                if (updateNativeSeekbar)
+                    UpdateSeekbarCurrentDuration(position);
+
+                if (updateObsFromActive && obsSession != null)
+                    PublishObsTimelineState(obsSession, timeline);
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "Unable to poll the active SMTC timeline");
+            }
+        }
+
+        if (obsIsPlaying && obsSession != null && obsSession.Id != activeSession?.Id)
+        {
+            try
+            {
+                var timeline = obsSession.ControlSession.GetTimelineProperties();
+                ObserveTimeline(
+                    obsSession,
+                    timeline,
+                    GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing);
+                PublishObsTimelineState(obsSession, timeline);
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "Unable to poll the OBS-selected SMTC timeline");
+            }
+        }
     }
 
     private void UpdateSeekbarCurrentDuration(TimeSpan position)
     {
-        Dispatcher.Invoke(() =>
+        if (!Dispatcher.CheckAccess())
         {
-            var seconds = Math.Max(0, position.TotalSeconds);
-            if (Seekbar.Maximum > 0)
-                seconds = Math.Min(seconds, Seekbar.Maximum);
-            Seekbar.Value = seconds;
-            var displayTime = TimeSpan.FromSeconds(seconds);
-            SeekbarCurrentDuration.Text = displayTime.ToString(
-                displayTime.Hours > 0 ? @"hh\:mm\:ss" : @"mm\:ss");
-        });
+            Dispatcher.BeginInvoke(new Action(() => UpdateSeekbarCurrentDuration(position)));
+            return;
+        }
+
+        var seconds = Math.Max(0, position.TotalSeconds);
+        if (Seekbar.Maximum > 0)
+            seconds = Math.Min(seconds, Seekbar.Maximum);
+        Seekbar.Value = seconds;
+        var displayTime = TimeSpan.FromSeconds(seconds);
+        SeekbarCurrentDuration.Text = displayTime.ToString(
+            displayTime.Hours > 0 ? @"hh\:mm\:ss" : @"mm\:ss");
     }
 
     private void HandlePlayBackState(GlobalSystemMediaTransportControlsSessionPlaybackStatus? status)
     {
-        if (status is null || _isCleaningUp)
+        if (_isCleaningUp)
             return;
 
         if (!Dispatcher.CheckAccess())
@@ -1778,26 +1835,35 @@ public partial class MainWindow : MicaWindow
             return;
         }
 
-        bool shouldRun = _seekBarEnabled &&
+        bool shouldRunNative = _seekBarEnabled &&
+            IsVisible &&
             status == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        bool shouldRunObs = SettingsManager.Current.ObsNowPlayingEnabled &&
+            GetObsMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus
+                == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        bool shouldRun = shouldRunNative || shouldRunObs;
+
         if (shouldRun == _isActive)
             return;
 
         _isActive = shouldRun;
         if (shouldRun)
         {
-            // The source may have been quiet while the flyout was hidden.
             if (GetActiveMediaSession() is { } session)
             {
                 try
                 {
-                    ObserveTimeline(session, session.ControlSession.GetTimelineProperties(), status);
+                    ObserveTimeline(
+                        session,
+                        session.ControlSession.GetTimelineProperties(),
+                        session.ControlSession.GetPlaybackInfo()?.PlaybackStatus);
                 }
                 catch (Exception ex)
                 {
-                    Logger.Debug(ex, "Unable to refresh SMTC clock on resume");
+                    Logger.Debug(ex, "Unable to refresh SMTC clock on playback-state change");
                 }
             }
+
             _positionTimer.Start();
         }
         else
@@ -1849,64 +1915,55 @@ public partial class MainWindow : MicaWindow
         finally
         {
             _obsServerGate.Release();
+            if (!_isCleaningUp && !Dispatcher.HasShutdownStarted)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                    HandlePlayBackState(GetActiveMediaSession()?.ControlSession.GetPlaybackInfo()?.PlaybackStatus)));
+            }
         }
     }
 
-    private void CleanupResources()
+    private Task CleanupResourcesAsync()
     {
-        // try saving settings before exiting if window is still open
-        // disabled because it caused too many issues (race conditions, shutdown exceptions), could look into another time
-        //try
-        //{
-        //    SettingsManager.SaveSettings();
-        //    Logger.Info("Settings saved successfully on cleanup");
-        //}
-        //catch (Exception ex)
-        //{
-        //    Logger.Error(ex, "Error while saving settings on cleanup");
-        //}
+        // All callers originate on the UI thread. Reuse the same task so OnClosed
+        // and the tray command cannot start competing shutdown sequences.
+        return _cleanupTask ??= CleanupResourcesCoreAsync();
+    }
 
-        // should be handled automatically on app exit but just in case
+    private async Task CleanupResourcesCoreAsync()
+    {
         if (Interlocked.Exchange(ref _cleanupStarted, 1) != 0)
             return;
 
+        _isCleaningUp = true;
+
         try
         {
-            _isCleaningUp = true;
-            _obsServerGate.Wait();
-            try
-            {
-                _obsWebServer?.StopAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn(ex, "Failed to stop WebSocket server cleanly");
-            }
-            finally
-            {
-                _obsServerGate.Release();
-            }
-
             _displayRefreshTimer.Stop();
             _displayRefreshTimer.Tick -= DisplayRefreshTimer_Tick;
+            _positionTimer.Stop();
+            _positionTimer.Tick -= SeekbarUpdateUi;
 
-            // unsubscribe from events
             mediaManager.OnAnyMediaPropertyChanged -= MediaManager_OnAnyMediaPropertyChanged;
             mediaManager.OnAnyPlaybackStateChanged -= CurrentSession_OnPlaybackStateChanged;
             mediaManager.OnAnyTimelinePropertyChanged -= MediaManager_OnAnyTimelinePropertyChanged;
             mediaManager.OnAnySessionClosed -= MediaManager_OnAnySessionClosed;
 
-            DisposeHeadsetControls();
+            try
+            {
+                DisposeHeadsetControls();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "Failed to dispose headset controls");
+            }
 
-            // dispose managed resources
-            _positionTimer.Stop();
-            _positionTimer.Tick -= SeekbarUpdateUi;
             cts?.Cancel();
             cts?.Dispose();
+            cts = null;
 
             TaskbarVisualizerControl.DisposeVisualizer();
 
-            // unhook hooks
             if (_hookId != IntPtr.Zero)
             {
                 UnhookWindowsHookEx(_hookId);
@@ -1915,7 +1972,6 @@ public partial class MainWindow : MicaWindow
 
             DeregisterShellHookWindow(new WindowInteropHelper(this).Handle);
 
-            // clean up other resources
             if (lockWindow?.IsLoaded == true)
                 lockWindow.Close();
 
@@ -1928,30 +1984,77 @@ public partial class MainWindow : MicaWindow
             if (volumeMixerWindow?.IsLoaded == true)
                 volumeMixerWindow.Close();
 
-            // restore native volume OSD
+            nIcon.Visibility = Visibility.Collapsed;
             VolumeMixerWindow.ShowVolumeOsd();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed while releasing FluentFlyout UI resources");
+        }
 
-            // dispose mutex
+        // Do not synchronously block the WPF dispatcher while Kestrel and active
+        // Browser Source sockets are shutting down. The timeout bounds app exit
+        // even if a local client does not close cleanly.
+        bool gateAcquired = false;
+        try
+        {
+            await _obsServerGate.WaitAsync();
+            gateAcquired = true;
+
+            if (_obsWebServer != null)
+            {
+                using var shutdownTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await _obsWebServer.StopAsync(shutdownTimeout.Token);
+            }
+        }
+        catch (OperationCanceledException ex)
+        {
+            Logger.Warn(ex, "Timed out while stopping the OBS WebSocket server");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn(ex, "Failed to stop the OBS WebSocket server cleanly");
+        }
+        finally
+        {
+            if (gateAcquired)
+                _obsServerGate.Release();
+        }
+
+        try
+        {
             singleton?.Dispose();
-
-            // flush and close NLog
-            NLog.LogManager.Shutdown();
         }
         catch (ObjectDisposedException)
         {
-            // harmless shutdown exceptions
+            // Harmless if another shutdown path already disposed the mutex.
         }
+
+        NLog.LogManager.Shutdown();
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        _ = CleanupResourcesAsync();
+        base.OnClosed(e);
+    }
+
+    private async void NotifyIconQuit_Click(object sender, RoutedEventArgs e)
+    {
+        NotifyIconQuit.IsEnabled = false;
+        nIcon.Visibility = Visibility.Collapsed;
+
         try
         {
-            CleanupResources();
+            await CleanupResourcesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed during tray-initiated application shutdown");
         }
         finally
         {
-            base.OnClosed(e);
+            Application.Current.Shutdown();
         }
     }
 
