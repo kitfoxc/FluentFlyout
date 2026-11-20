@@ -75,6 +75,6 @@ Scope: stability, performance, configuration validation, and theme-resource safe
 - [x] M4.3 WebSocket lifecycle and backpressure — code applied; CI verification pending.
 - [x] M4.4 configuration validation — code applied; CI verification pending.
 - [x] M4.5 theme filesystem boundary — code applied; CI verification pending.
-- [x] M4.6 browser helper tests and CI integration — code applied; CI verification pending. MSIX/runtime packaging and live x64/ARM64 installation remain manual release gates.
+- [x] M4.6 browser and OBS service tests plus CI integration — code applied; CI verification pending. MSIX/runtime packaging and live x64/ARM64 installation remain manual release gates.
 
 A task is complete only after its code review and relevant CI/acceptance checks pass. If runtime-only behavior cannot be proven by CI, it remains explicitly marked for manual verification.

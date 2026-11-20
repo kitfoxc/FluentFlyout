@@ -22,7 +22,11 @@ jobs:
           dotnet-version: 10.0.x
       - name: Test Browser progress helpers
         run: node --test FluentFlyoutWPF/Web/js/progress-utils.test.mjs
-      - name: Restore
+      - name: Restore solution
         run: dotnet restore FluentFlyout.sln
+      - name: Restore OBS service tests
+        run: dotnet restore FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj
+      - name: Test OBS services
+        run: dotnet test FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj --configuration Debug --no-restore
       - name: Build WPF application
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Debug --no-restore
