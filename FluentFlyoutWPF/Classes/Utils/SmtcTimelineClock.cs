@@ -59,7 +59,7 @@ public sealed class SmtcTimelineClock
                 {
                     Position = raw, Duration = maximum, SourcePosition = raw,
                     SourceUpdatedAt = sourceUpdatedAt, Ticks = now,
-                    IsPlaying = isPlaying, CanAdvance = isPlaying
+                    IsPlaying = isPlaying, CanAdvance = false
                 };
                 _anchors.Add(sessionId, anchor);
                 return TimeSpan.FromSeconds(raw);
@@ -85,8 +85,10 @@ public sealed class SmtcTimelineClock
             }
             else if (!anchor.IsPlaying)
             {
+                // A 'playing' state does not prove that the decoder has moved.
+                // Wait for an advancing source sample before extrapolating.
                 next = raw;
-                canAdvance = true;
+                canAdvance = !samePosition;
             }
             else if (samePosition)
             {
