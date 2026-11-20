@@ -2,7 +2,9 @@ import {
   getReportedPosition,
   hasForwardProgress,
   isTimelineFresh,
-  pruneRecentSamples
+  pruneRecentSamples,
+  classifyPositionError,
+  timelineSampleKey
 } from "./progress-utils.js";
 
 const elements = {
@@ -57,6 +59,7 @@ let lastAdvanceAt = 0;
 let calibrationStartedAt = 0;
 let calibrationSamples = [];
 let recoverySamples = [];
+let lastTimelineSampleKey = null;
 
 // The browser owns a continuous playhead only after SMTC's timeline has been
 // observed advancing. During startup and buffering it deliberately holds still.
@@ -142,6 +145,7 @@ function enterSleep(reason, clearMedia = false) {
     calibrationSamples = [];
     recoverySamples = [];
     lastPositionSample = null;
+    lastTimelineSampleKey = null;
   }
 }
 
@@ -263,6 +267,7 @@ function resetAnchor(position, now = performance.now()) {
 function beginCalibration(media, now) {
   const position = getReportedPosition(media);
   const fresh = hasFreshTimeline(media);
+  lastTimelineSampleKey = timelineSampleKey(media);
   syncMode = SYNC.CALIBRATING;
   calibrationStartedAt = now;
   // A stale first snapshot may anchor the frozen display, but it must never
@@ -318,6 +323,9 @@ function processCalibrationSample(position, now, media) {
     return;
   }
 
+  const sampleKey = timelineSampleKey(media);
+  if (sampleKey !== null && sampleKey === lastTimelineSampleKey) return;
+  lastTimelineSampleKey = sampleKey;
   calibrationSamples.push({ position, at: now });
   calibrationSamples = pruneRecentSamples(
     calibrationSamples,
@@ -355,6 +363,9 @@ function processCalibrationSample(position, now, media) {
 function processStalledSample(position, now, media) {
   if (!hasFreshTimeline(media)) return;
 
+  const sampleKey = timelineSampleKey(media);
+  if (sampleKey !== null && sampleKey === lastTimelineSampleKey) return;
+  lastTimelineSampleKey = sampleKey;
   recoverySamples.push({ position, at: now });
   recoverySamples = pruneRecentSamples(
     recoverySamples,
@@ -393,6 +404,10 @@ function synchronizePosition(media, now) {
     return;
   }
 
+  const sampleKey = timelineSampleKey(media);
+  if (sampleKey !== null && sampleKey === lastTimelineSampleKey) return;
+  lastTimelineSampleKey = sampleKey;
+
   const currentPosition = getInterpolatedPosition(now);
   const difference = incomingPosition - currentPosition;
   const previousSample = lastPositionSample;
@@ -426,6 +441,9 @@ function synchronizePosition(media, now) {
     renderPosition(incomingPosition);
     return;
   }
+
+  // A small error is sampling jitter, not a reason to restart the easing curve.
+  if (classifyPositionError(incomingPosition, currentPosition) === "ignore") return;
 
   positionAnchor = currentPosition;
   positionAnchorAt = now;
