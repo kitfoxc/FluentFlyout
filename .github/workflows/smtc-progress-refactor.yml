@@ -1,0 +1,40 @@
+name: SMTC Progress Refactor
+
+on:
+  push:
+    branches:
+      - feature/smtc-progress-refactor
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test Browser Source progress helpers
+        run: node --test FluentFlyoutWPF/Web/js/progress-utils.test.mjs
+      - name: Restore WPF application
+        run: dotnet restore FluentFlyoutWPF/FluentFlyout.csproj
+      - name: Restore unit tests
+        run: dotnet restore FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj
+      - name: Test SMTC progress clock and media state store
+        run: dotnet test FluentFlyoutWPF.Tests/FluentFlyoutWPF.Tests.csproj --configuration Debug --no-restore
+      - name: Build WPF Debug x64
+        run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Debug --no-restore -p:Platform=x64
+      - name: Build WPF Release x64
+        run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=x64
+      - name: Build WPF Release ARM64
+        run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=ARM64

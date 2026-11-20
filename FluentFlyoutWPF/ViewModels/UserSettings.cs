@@ -751,6 +751,18 @@ public partial class UserSettings : ObservableObject
     [ObservableProperty]
     public partial bool AnonymousTelemetryAllowed { get; set; }
 
+    /// <summary>Enable the local OBS Now Playing HTTP and WebSocket service.</summary>
+    [ObservableProperty]
+    public partial bool ObsNowPlayingEnabled { get; set; }
+
+    /// <summary>Loopback HTTP port used by OBS Browser Sources.</summary>
+    [ObservableProperty]
+    public partial int ObsNowPlayingPort { get; set; }
+
+    /// <summary>Name of the selected immediate child folder in web-theme.</summary>
+    [ObservableProperty]
+    public partial string WebSocketThemeFileName { get; set; }
+
     [XmlIgnore]
     private bool _initializing = true;
 
@@ -848,6 +860,9 @@ public partial class UserSettings : ObservableObject
         LegacyTaskbarWidthEnabled = false;
         Uuid = Guid.NewGuid();
         AnonymousTelemetryAllowed = true;
+        ObsNowPlayingEnabled = true;
+        ObsNowPlayingPort = 17832;
+        WebSocketThemeFileName = "default";
         AllowedApps = [];
         BlockedApps = [];
 
@@ -908,7 +923,45 @@ public partial class UserSettings : ObservableObject
     /// </summary>
     internal void CompleteInitialization()
     {
+        if (ObsNowPlayingPort is < 1024 or > 65535)
+            ObsNowPlayingPort = 17832;
+
+        WebSocketThemeFileName = NormalizeWebSocketThemeName(WebSocketThemeFileName);
         _initializing = false;
+    }
+
+    private static string NormalizeWebSocketThemeName(string? value)
+    {
+        var name = value?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name is "." or ".." ||
+            name.IndexOfAny([System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar, ':']) >= 0)
+            return "default";
+
+        return name;
+    }
+
+    partial void OnObsNowPlayingEnabledChanged(bool oldValue, bool newValue)
+    {
+        if (oldValue == newValue || _initializing) return;
+        ApplyWebSocketSettings();
+    }
+
+    partial void OnObsNowPlayingPortChanged(int oldValue, int newValue)
+    {
+        if (oldValue == newValue || _initializing) return;
+        if (newValue is < 1024 or > 65535)
+        {
+            ObsNowPlayingPort = 17832;
+            return;
+        }
+
+        ApplyWebSocketSettings();
+    }
+
+    private static void ApplyWebSocketSettings()
+    {
+        if (Application.Current?.MainWindow is MainWindow mainWindow)
+            mainWindow.ApplyWebSocketSettings();
     }
 
     partial void OnAppLanguageChanged(string oldValue, string newValue)

@@ -136,6 +136,11 @@ public partial class HomePage : Page
         SettingsWindow.NavigateToPage(typeof(MediaFlyoutPage));
     }
 
+    private void WebSocket_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        SettingsWindow.NavigateToPage(typeof(WebSocketPage));
+    }
+
     private void VolumeFlyout_Click(object sender, System.Windows.RoutedEventArgs e)
     {
         SettingsWindow.NavigateToPage(typeof(VolumeMixerPage));
