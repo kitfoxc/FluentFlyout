@@ -71,10 +71,10 @@ Scope: stability, performance, configuration validation, and theme-resource safe
 ## Implementation status
 
 - [x] M4.1 browser progress fixes — code applied; CI verification pending.
-- [ ] M4.2 media and cover-art performance.
-- [ ] M4.3 WebSocket lifecycle and backpressure.
-- [ ] M4.4 configuration validation.
-- [ ] M4.5 theme filesystem boundary.
+- [x] M4.2 media and cover-art performance — code applied; CI verification pending.
+- [x] M4.3 WebSocket lifecycle and backpressure — code applied; CI verification pending.
+- [x] M4.4 configuration validation — code applied; CI verification pending.
+- [x] M4.5 theme filesystem boundary — code applied; CI verification pending.
 - [ ] M4.6 automated and release verification.
 
 A task is complete only after its code review and relevant CI/acceptance checks pass. If runtime-only behavior cannot be proven by CI, it remains explicitly marked for manual verification.

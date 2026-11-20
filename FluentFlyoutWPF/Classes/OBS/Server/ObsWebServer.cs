@@ -230,7 +230,14 @@ public sealed class ObsWebServer : IAsyncDisposable
             _pendingMediaState = null;
             _mediaPushScheduled = false;
         }
-        pendingFlush?.Cancel();
+        try
+        {
+            pendingFlush?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The coalescing task may have completed between detaching and cancelling.
+        }
 
         // Close active Browser Source sockets before stopping Kestrel so no
         // per-client sender can remain blocked after the listener is gone.

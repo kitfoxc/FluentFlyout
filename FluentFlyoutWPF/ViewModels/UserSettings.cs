@@ -928,7 +928,50 @@ public partial class UserSettings : ObservableObject
     /// </summary>
     internal void CompleteInitialization()
     {
+        NormalizeObsSettings();
         _initializing = false;
+    }
+
+    /// <summary>
+    /// XML deserialization bypasses property-change validation while the settings
+    /// object is initializing. Normalize OBS values here so imported and restored
+    /// settings cannot pass invalid values into server/theme constructors.
+    /// </summary>
+    private void NormalizeObsSettings()
+    {
+        if (ObsNowPlayingPort is < 1024 or > 65535)
+        {
+            Logger.Warn("Invalid OBS Now Playing port {0}; using default port {1}",
+                ObsNowPlayingPort, 17832);
+            ObsNowPlayingPort = 17832;
+        }
+
+        ObsPinnedSessionId = ObsPinnedSessionId?.Trim() ?? string.Empty;
+
+        if (string.Equals(WebSocketThemeFileName, "default.html", StringComparison.OrdinalIgnoreCase))
+        {
+            WebSocketThemeFileName = "default";
+        }
+        else if (!IsValidThemeFolderName(WebSocketThemeFileName))
+        {
+            Logger.Warn("Invalid OBS theme folder setting; using the default theme");
+            WebSocketThemeFileName = "default";
+        }
+        else
+        {
+            WebSocketThemeFileName = WebSocketThemeFileName.Trim();
+        }
+    }
+
+    private static bool IsValidThemeFolderName(string? folderName)
+    {
+        if (string.IsNullOrWhiteSpace(folderName))
+            return false;
+
+        var name = folderName.Trim();
+        return name is not "." and not ".."
+            && !Path.IsPathRooted(name)
+            && name.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, ':']) < 0;
     }
 
     partial void OnObsNowPlayingEnabledChanged(bool oldValue, bool newValue)
