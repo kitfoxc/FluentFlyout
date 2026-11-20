@@ -116,6 +116,16 @@ public sealed class SmtcTimelineClockTests
     }
 
     [Fact]
+    public void MissingDuration_DoesNotInventPositionProgress()
+    {
+        var clock = new SmtcTimelineClock();
+        clock.Observe("player", Sec(0), TimeSpan.Zero, T0, true, Ticks(0));
+
+        Assert.Equal(0, clock.Estimate("player", Ticks(10))!.Value.TotalSeconds, 3);
+        Assert.Equal(0, clock.RemainingProjectionMilliseconds("player", Ticks(10)));
+    }
+
+    [Fact]
     public void SessionsAreIndependentAndRemovalClearsTheirState()
     {
         var clock = new SmtcTimelineClock();
