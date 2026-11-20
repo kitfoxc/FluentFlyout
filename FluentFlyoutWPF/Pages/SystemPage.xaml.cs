@@ -3,8 +3,8 @@
 
 using FluentFlyout.Classes.Settings;
 using FluentFlyout.Classes.Utils;
-using FluentFlyoutWPF.Classes.Utils;
 using FluentFlyoutWPF.Classes;
+using FluentFlyoutWPF.Classes.Utils;
 using Microsoft.Win32;
 using NLog;
 using System.Diagnostics;
