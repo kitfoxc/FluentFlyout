@@ -38,11 +38,15 @@ jobs:
       - name: Verify ASP.NET Core runtime is included in self-contained output
         shell: pwsh
         run: |
-          $outputRoot = "FluentFlyoutWPF/bin"
-          $hostFxr = Get-ChildItem $outputRoot -Filter "hostfxr.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '[\\/]Release[\\/]' } | Select-Object -First 1
-          $aspNetCore = Get-ChildItem $outputRoot -Filter "Microsoft.AspNetCore.Hosting.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '[\\/]Release[\\/]' } | Select-Object -First 1
+          $publishDir = "$env:RUNNER_TEMP\FluentFlyout-SelfContained"
+          dotnet publish FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=x64 --runtime win-x64 --self-contained true --output "$publishDir"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Self-contained Release publish failed."
+          }
+          $hostFxr = Get-ChildItem $publishDir -Filter "hostfxr.dll" -Recurse | Select-Object -First 1
+          $aspNetCore = Get-ChildItem $publishDir -Filter "Microsoft.AspNetCore.Hosting.dll" -Recurse | Select-Object -First 1
           if (-not $hostFxr -or -not $aspNetCore) {
-            throw "Self-contained Release output is missing the .NET host or ASP.NET Core runtime."
+            throw "Self-contained publish output is missing the .NET host or ASP.NET Core runtime."
           }
       - name: Build WPF Release ARM64
         run: dotnet build FluentFlyoutWPF/FluentFlyout.csproj --configuration Release --no-restore -p:Platform=ARM64
