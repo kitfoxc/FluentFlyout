@@ -5,405 +5,408 @@ import {
   smoothPosition
 } from "./progress-utils.js";
 
-const elements = {
-  widget: document.querySelector("#widget"),
-  cover: document.querySelector("#cover"),
-  coverPlaceholder: document.querySelector("#cover-placeholder"),
-  title: document.querySelector("#title"),
-  artist: document.querySelector("#artist"),
-  album: document.querySelector("#album"),
-  player: document.querySelector("#player"),
-  status: document.querySelector("#status-label"),
-  progressArea: document.querySelector("#progress-area"),
-  progressFill: document.querySelector("#progress-fill"),
-  position: document.querySelector("#position"),
-  duration: document.querySelector("#duration"),
-  connection: document.querySelector("#connection")
-};
+// REQUIRED INTERFACE: keep the FluentFlyout API import contract and the
+// progress-utils exports above. The rest of this file is presentation logic
+// and may be customized as long as the data contract remains intact.
+const el = Object.fromEntries([
+  "dashboard", "cover", "coverPlaceholder", "coverState", "trackTitle",
+  "trackArtist", "trackAlbum", "playerName", "playbackPill", "playbackLabel",
+  "connectionPill", "connectionLabel", "progressTrack", "progressFill",
+  "progressPercent", "position", "duration", "progressAdaptation",
+  "progressDetail", "availabilityValue", "availabilityDetail",
+  "efficiencyValue", "efficiencyDetail", "adaptationValue", "adaptationDetail",
+  "sequenceValue", "updatedValue", "sessionId", "sourceName", "sourceStatus",
+  "sourceAvailable", "sourceTitle", "sourceArtist", "sourceAlbum",
+  "reportedPosition", "reportedDuration", "timestampSource", "timelineUpdated",
+  "progressMethod", "reportedPercent", "sampleAge", "coverStatus", "coverId",
+  "coverEndpoint", "sequenceDetail", "updatedAt", "snapshotReceived", "wsState",
+  "renderState", "sleepReason", "animationState", "visibilityState",
+  "protocolVersion", "footerState"
+].map(key => [key, document.getElementById(({
+  trackTitle:"track-title", trackArtist:"track-artist", trackAlbum:"track-album",
+  playerName:"player-name", playbackPill:"playback-pill", playbackLabel:"playback-label",
+  connectionPill:"connection-pill", connectionLabel:"connection-label",
+  progressTrack:"progress-track", progressFill:"progress-fill",
+  progressPercent:"progress-percent", progressAdaptation:"progress-adaptation",
+  progressDetail:"progress-detail", availabilityValue:"availability-value",
+  availabilityDetail:"availability-detail", efficiencyValue:"efficiency-value",
+  efficiencyDetail:"efficiency-detail", adaptationValue:"adaptation-value",
+  adaptationDetail:"adaptation-detail", sequenceValue:"sequence-value",
+  updatedValue:"updated-value", sessionId:"session-id", sourceName:"source-name",
+  sourceStatus:"source-status", sourceAvailable:"source-available",
+  sourceTitle:"source-title", sourceArtist:"source-artist", sourceAlbum:"source-album",
+  reportedPosition:"reported-position", reportedDuration:"reported-duration",
+  timestampSource:"timestamp-source", timelineUpdated:"timeline-updated",
+  progressMethod:"progress-method", reportedPercent:"reported-percent",
+  sampleAge:"sample-age", coverStatus:"cover-status", coverId:"cover-id",
+  coverEndpoint:"cover-endpoint", sequenceDetail:"sequence-detail",
+  updatedAt:"updated-at", snapshotReceived:"snapshot-received",
+  wsState:"ws-state", renderState:"render-state", sleepReason:"sleep-reason",
+  animationState:"animation-state", visibilityState:"visibility-state",
+  protocolVersion:"protocol-version", footerState:"footer-state",
+  coverPlaceholder:"cover-placeholder"
+}[key] || key))]));
 
-const SYNC = Object.freeze({
-  SLEEPING: "sleeping",
-  RUNNING: "running",
-  PAUSED: "paused"
+const CONFIG = Object.freeze({
+  // CUSTOMIZABLE: pause delay before the renderer enters low-activity mode.
+  pauseSleepMs: 5 * 60 * 1000,
+  // CUSTOMIZABLE: visual smoothing only; this does not change SMTC data.
+  normalSmoothingMs: 150,
+  recoverySmoothingMs: 500,
+  backwardSeekThresholdSeconds: 0.8,
+  forwardSnapThresholdSeconds: 8,
+  textUpdateIntervalMs: 200
 });
 
-const PAUSED_SLEEP_MS = 5 * 60 * 1000;
-const NORMAL_SMOOTHING_MS = 150;
-const RECOVERY_SMOOTHING_MS = 500;
-const BACKWARD_SEEK_THRESHOLD_SECONDS = 0.8;
-const FORWARD_SNAP_THRESHOLD_SECONDS = 8;
-const TEXT_UPDATE_INTERVAL_MS = 200;
-
-let state = null;
-let syncMode = SYNC.SLEEPING;
+const MODE = Object.freeze({ EFFICIENCY: "efficiency", RUNNING: "running", PAUSED: "paused" });
+let mediaState = null;
+let mode = MODE.EFFICIENCY;
+let sleepReason = "尚未收到媒体快照";
 let animationFrame = 0;
-let pauseSleepTimer = 0;
-let currentCoverUrl = null;
-let pendingCoverImage = null;
+let pauseTimer = 0;
 let currentTrackKey = null;
-let sleeping = true;
-let sleepReason = "no-media";
-
-// Logical position is the authoritative playhead derived from the latest SMTC
-// timeline anchor. Visual position is only a presentation value that follows it.
+let currentCoverUrl = null;
+let pendingCover = null;
 let logicalAnchor = 0;
 let logicalAnchorAt = performance.now();
 let visualPosition = 0;
 let lastFrameAt = 0;
-let lastTextRenderAt = 0;
+let lastTextAt = 0;
 let lastReportedPosition = null;
+let lastSnapshotAt = null;
+let connected = false;
 
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const total = Math.floor(seconds);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const remainder = total % 60;
-  return hours > 0
-    ? hours + ":" + String(minutes).padStart(2, "0") + ":" + String(remainder).padStart(2, "0")
-    : minutes + ":" + String(remainder).padStart(2, "0");
+function text(node, value) {
+  if (node) node.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
 }
-
-function getTrackKey(media) {
-  return [media?.sessionId || "", media?.title || ""].join("\u001f");
+function fmtTime(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return "—";
+  const s = Math.floor(n), h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`
+    : `${m}:${String(r).padStart(2,"0")}`;
 }
-
-function clampToDuration(position) {
-  const duration = Math.max(0, Number(state?.duration) || 0);
-  const safePosition = Number.isFinite(position) ? Math.max(0, position) : 0;
-  return duration > 0 ? Math.min(duration, safePosition) : safePosition;
+function fmtDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
-
-function getLogicalPosition(now = performance.now()) {
-  const elapsed = syncMode === SYNC.RUNNING && state?.playbackStatus === "Playing"
-    ? Math.max(0, now - logicalAnchorAt) / 1000
-    : 0;
-  return clampToDuration(logicalAnchor + elapsed);
+function fmtAge(value) {
+  if (!value) return "—";
+  const age = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(age)) return "—";
+  return age < 0 ? "时钟超前" : age < 1000 ? `${age} ms` : `${(age/1000).toFixed(1)} s`;
 }
-
+function trackKey(media) {
+  return [media?.sessionId || "", media?.title || "", media?.artist || ""].join("\u001f");
+}
+function durationSeconds() {
+  const d = Number(mediaState?.duration);
+  return Number.isFinite(d) && d > 0 ? d : 0;
+}
+function clampPosition(value) {
+  const n = Number(value);
+  const safe = Number.isFinite(n) ? Math.max(0,n) : 0;
+  const duration = durationSeconds();
+  return duration ? Math.min(duration,safe) : safe;
+}
+function logicalPosition(now = performance.now()) {
+  const elapsed = mode === MODE.RUNNING && mediaState?.playbackStatus === "Playing"
+    ? Math.max(0,now-logicalAnchorAt)/1000 : 0;
+  return clampPosition(logicalAnchor+elapsed);
+}
 function stopAnimation() {
-  if (animationFrame) {
-    cancelAnimationFrame(animationFrame);
-    animationFrame = 0;
-  }
+  if (animationFrame) cancelAnimationFrame(animationFrame);
+  animationFrame = 0;
+  text(el.animationState,"已挂起");
 }
-
 function startAnimation() {
-  if (animationFrame || sleeping || document.hidden || syncMode !== SYNC.RUNNING)
-    return;
+  if (animationFrame || mode !== MODE.RUNNING || document.hidden) return;
   lastFrameAt = performance.now();
   animationFrame = requestAnimationFrame(updateProgress);
+  text(el.animationState,"运行中");
 }
-
-function clearPauseSleepTimer() {
-  if (pauseSleepTimer) {
-    clearTimeout(pauseSleepTimer);
-    pauseSleepTimer = 0;
+function clearPauseTimer() {
+  if (pauseTimer) clearTimeout(pauseTimer);
+  pauseTimer = 0;
+}
+function setAnchor(position, now = performance.now(), syncVisual = false) {
+  logicalAnchor = clampPosition(position);
+  logicalAnchorAt = now;
+  if (syncVisual) visualPosition = logicalAnchor;
+}
+function renderProgress(position, force = false) {
+  const duration = durationSeconds();
+  const current = clampPosition(position);
+  const pct = duration ? Math.max(0,Math.min(100,current/duration*100)) : null;
+  el.progressFill.style.transform = `scaleX(${pct === null ? 0 : pct/100})`;
+  el.progressTrack.setAttribute("aria-valuenow",pct === null ? "0" : pct.toFixed(1));
+  text(el.position,fmtTime(current));
+  text(el.duration,duration ? fmtTime(duration) : "时长未知");
+  if (force || performance.now()-lastTextAt >= CONFIG.textUpdateIntervalMs) {
+    text(el.progressPercent,pct === null ? "不可计算" : `${pct.toFixed(1)}%`);
+    text(el.reportedPercent,pct === null ? "不可计算（Duration 缺失）" : `${pct.toFixed(2)}%`);
+    lastTextAt = performance.now();
   }
 }
-
+function getProgressSource(media) {
+  const now = Date.now();
+  if (hasValidTimelineTimestamp(media,now))
+    return { label:"SMTC 时间线", method:"Position + TimelineLastUpdatedTime", detail:"使用 SMTC 时间戳外推", grade:"优" };
+  const updated = Date.parse(media?.updatedAt || "");
+  if (Number.isFinite(updated) && updated >= Date.UTC(2000,0,1) && updated-now <= 1000)
+    return { label:"UpdatedAt 回退", method:"Position + UpdatedAt 初始锚点", detail:"缺少有效 SMTC 时间戳，使用服务更新时间回退", grade:"回退" };
+  return { label:"Position 直读", method:"报告值 + 本地单调时钟", detail:"缺少可用时间戳；仅依赖 Position 跳变修正", grade:"有限" };
+}
+function renderProgressDiagnostics(media) {
+  const source = getProgressSource(media);
+  const hasDuration = durationSeconds() > 0;
+  const hasPosition = Number.isFinite(Number(media.position));
+  const grade = !hasDuration ? "不完整" : hasPosition ? source.grade : "无数据";
+  text(el.progressAdaptation,!hasDuration ? "时长缺失 · 无法计算百分比" : source.label);
+  text(el.progressDetail,!hasDuration ? "音源未提供有效 Duration" : source.detail);
+  text(el.timestampSource,source.label);
+  text(el.progressMethod,source.method);
+  text(el.adaptationValue,grade);
+  text(el.adaptationDetail,!hasDuration ? "需音源提供有效 Duration" : source.detail);
+  text(el.sampleAge,fmtAge(media.timelineLastUpdatedTime || media.updatedAt));
+}
+function renderMetadata(media) {
+  const status = media.playbackStatus || "Unknown";
+  text(el.trackTitle,media.title || "未知曲目");
+  text(el.trackArtist,media.artist || "未知艺术家");
+  text(el.trackAlbum,media.album || "专辑信息缺失");
+  text(el.playerName,media.playerName || "未识别音源");
+  text(el.sourceName,media.playerName);
+  text(el.sourceStatus,status);
+  text(el.sourceAvailable,media.isAvailable ? "是" : "否");
+  text(el.sourceTitle,media.title);
+  text(el.sourceArtist,media.artist);
+  text(el.sourceAlbum,media.album);
+  text(el.sessionId,media.sessionId);
+  text(el.reportedPosition,fmtTime(media.position));
+  text(el.reportedDuration,media.duration > 0 ? fmtTime(media.duration) : "未知 / 0");
+  text(el.timelineUpdated,fmtDate(media.timelineLastUpdatedTime));
+  text(el.sequenceValue,media.sequence);
+  text(el.sequenceDetail,media.sequence);
+  text(el.updatedAt,fmtDate(media.updatedAt));
+  text(el.updatedValue,`更新时间：${fmtDate(media.updatedAt)}`);
+  text(el.snapshotReceived,lastSnapshotAt ? new Date(lastSnapshotAt).toLocaleTimeString() : "—");
+  text(el.availabilityValue,media.isAvailable ? "可用" : "不可用");
+  text(el.availabilityDetail,media.isAvailable ? "已接收到活动媒体会话" : "没有可用的 SMTC 媒体会话");
+  text(el.protocolVersion,window.FluentFlyout?.protocolVersion || "未知");
+  text(el.footerState,`会话序列 ${media.sequence ?? "—"} · ${status}`);
+  renderProgressDiagnostics(media);
+}
 function releaseCover() {
-  if (pendingCoverImage) {
-    pendingCoverImage.onload = null;
-    pendingCoverImage.onerror = null;
-    pendingCoverImage.src = "";
-    pendingCoverImage = null;
+  if (pendingCover) {
+    pendingCover.onload = pendingCover.onerror = null;
+    pendingCover.src = "";
+    pendingCover = null;
   }
-
-  elements.cover.onload = null;
-  elements.cover.onerror = null;
-  elements.cover.removeAttribute("src");
-  elements.cover.hidden = true;
-  elements.coverPlaceholder.hidden = false;
+  el.cover.removeAttribute("src");
+  el.cover.hidden = true;
+  el.coverPlaceholder.hidden = false;
   currentCoverUrl = null;
 }
-
-function enterSleep(reason, clearMedia = false) {
-  sleeping = true;
-  sleepReason = reason;
-  syncMode = SYNC.SLEEPING;
-  stopAnimation();
-  clearPauseSleepTimer();
-  releaseCover();
-  elements.widget.classList.add("is-hidden", "is-sleeping");
-
-  if (clearMedia) {
-    state = null;
-    currentTrackKey = null;
-    logicalAnchor = 0;
-    visualPosition = 0;
-    lastReportedPosition = null;
-  }
-}
-
-function wakePage() {
-  if (!sleeping) return;
-  sleeping = false;
-  sleepReason = "";
-  elements.widget.classList.remove("is-hidden", "is-sleeping");
-}
-
-function schedulePausedSleep() {
-  if (pauseSleepTimer || sleeping) return;
-
-  pauseSleepTimer = window.setTimeout(() => {
-    pauseSleepTimer = 0;
-    if (state?.playbackStatus === "Paused")
-      enterSleep("paused");
-  }, PAUSED_SLEEP_MS);
-}
-
-function setPosition(position, now = performance.now(), syncVisual = false) {
-  logicalAnchor = clampToDuration(position);
-  logicalAnchorAt = now;
-  if (syncVisual)
-    visualPosition = logicalAnchor;
-}
-
-function renderPosition(position, forceText = false) {
-  const duration = Math.max(0, Number(state?.duration) || 0);
-  const safePosition = clampToDuration(position);
-  const progress = duration > 0 ? safePosition / duration : 0;
-  elements.progressFill.style.transform = "scaleX(" + Math.max(0, Math.min(1, progress)) + ")";
-
-  const now = performance.now();
-  if (forceText || now - lastTextRenderAt >= TEXT_UPDATE_INTERVAL_MS) {
-    elements.position.textContent = formatTime(safePosition);
-    elements.duration.textContent = formatTime(duration);
-    lastTextRenderAt = now;
-  }
-}
-
-function renderMetadata(media) {
-  elements.title.textContent = media.title || "Unknown track";
-  elements.artist.textContent = media.artist || "";
-  elements.album.textContent = media.album || "";
-  elements.player.textContent = media.playerName || "";
-  elements.status.textContent = media.playbackStatus === "Playing"
-    ? "NOW PLAYING"
-    : media.playbackStatus === "Paused" ? "PAUSED" : "STOPPED";
-  elements.widget.classList.toggle("is-paused", media.playbackStatus !== "Playing");
-  elements.progressArea.classList.toggle("is-unavailable", !(Number(media.duration) > 0));
-  renderPosition(syncMode === SYNC.RUNNING ? getLogicalPosition() : visualPosition, true);
-}
-
 function setCover(url) {
   if (url === currentCoverUrl) return;
-
-  if (pendingCoverImage) {
-    pendingCoverImage.onload = null;
-    pendingCoverImage.onerror = null;
-    pendingCoverImage.src = "";
-    pendingCoverImage = null;
+  if (pendingCover) {
+    pendingCover.onload = pendingCover.onerror = null;
+    pendingCover.src = "";
+    pendingCover = null;
   }
-
   currentCoverUrl = url || null;
   if (!currentCoverUrl) {
-    elements.cover.removeAttribute("src");
-    elements.cover.hidden = true;
-    elements.coverPlaceholder.hidden = false;
+    el.cover.removeAttribute("src");
+    el.cover.hidden = true;
+    el.coverPlaceholder.hidden = false;
+    text(el.coverState,"无封面");
+    text(el.coverStatus,"未提供");
+    text(el.coverId,null);
+    text(el.coverEndpoint,"未提供");
     return;
   }
-
+  text(el.coverState,"封面加载中");
+  text(el.coverStatus,"加载中");
+  text(el.coverId,mediaState?.coverId);
+  // Do not display the full URL: it contains the process-local access token.
+  text(el.coverEndpoint,"本地受保护接口 /api/covers/");
   const image = new Image();
-  pendingCoverImage = image;
+  pendingCover = image;
   image.onload = () => {
-    if (pendingCoverImage !== image || currentCoverUrl !== url) return;
-    pendingCoverImage = null;
-    image.onload = null;
-    image.onerror = null;
-    elements.cover.src = url;
-    elements.cover.hidden = false;
-    elements.coverPlaceholder.hidden = true;
+    if (pendingCover !== image || currentCoverUrl !== url) return;
+    pendingCover = null;
+    el.cover.src = url;
+    el.cover.hidden = false;
+    el.coverPlaceholder.hidden = true;
+    text(el.coverState,"封面已加载");
+    text(el.coverStatus,"已加载");
   };
   image.onerror = () => {
-    if (pendingCoverImage !== image || currentCoverUrl !== url) return;
-    pendingCoverImage = null;
-    image.onload = null;
-    image.onerror = null;
+    if (pendingCover !== image || currentCoverUrl !== url) return;
+    pendingCover = null;
     currentCoverUrl = null;
-    elements.cover.removeAttribute("src");
-    elements.cover.hidden = true;
-    elements.coverPlaceholder.hidden = false;
+    el.cover.hidden = true;
+    el.coverPlaceholder.hidden = false;
+    text(el.coverState,"封面不可用");
+    text(el.coverStatus,"加载失败");
   };
   image.src = url;
 }
-
-function resetPlayhead(media, now, syncVisual = true) {
-  const position = getTimelinePosition(media, Date.now());
-  lastReportedPosition = getReportedPosition(media);
-  setPosition(position, now, syncVisual);
-  if (syncVisual)
-    renderPosition(visualPosition, true);
+function setEfficiency(reason) {
+  mode = MODE.EFFICIENCY;
+  sleepReason = reason;
+  stopAnimation();
+  clearPauseTimer();
+  el.dashboard.classList.add("is-efficiency");
+  text(el.efficiencyValue,"效率模式");
+  text(el.efficiencyDetail,"动画帧与高频视觉更新已挂起");
+  text(el.renderState,"休眠 / 效率模式");
+  text(el.sleepReason,reason);
+  text(el.footerState,`效率模式 · ${reason}`);
 }
-
-function synchronizePosition(media, now) {
-  const wallNow = Date.now();
-  const reportedPosition = getReportedPosition(media);
-  const currentPosition = getLogicalPosition(now);
-
-  // UpdatedAt is only a startup fallback when SMTC does not provide a usable
-  // LastUpdatedTime. Reusing each event's UpdatedAt would continually pull the
-  // playhead back to a repeated, unchanged Position value.
-  if (!hasValidTimelineTimestamp(media, wallNow)) {
-    const previousReportedPosition = lastReportedPosition;
-    lastReportedPosition = reportedPosition;
-
-    if (previousReportedPosition !== null &&
-        reportedPosition < previousReportedPosition - BACKWARD_SEEK_THRESHOLD_SECONDS) {
-      setPosition(reportedPosition, now, true);
-      renderPosition(visualPosition, true);
-      return;
-    }
-
-    const rawDifference = reportedPosition - currentPosition;
-    if (rawDifference > FORWARD_SNAP_THRESHOLD_SECONDS) {
-      setPosition(reportedPosition, now, true);
-      renderPosition(visualPosition, true);
-      return;
-    }
-
-    if (rawDifference > 0.6)
-      setPosition(reportedPosition, now, false);
-
-    startAnimation();
-    return;
-  }
-
-  lastReportedPosition = reportedPosition;
-  const incomingPosition = getTimelinePosition(media, wallNow);
-  const difference = incomingPosition - currentPosition;
-
-  // A small backwards correction is usually sample jitter. Keep the logical
-  // playhead monotonic; a clear backwards seek still resets immediately.
-  if (difference < -BACKWARD_SEEK_THRESHOLD_SECONDS ||
-      difference > FORWARD_SNAP_THRESHOLD_SECONDS) {
-    setPosition(incomingPosition, now, true);
-    renderPosition(visualPosition, true);
-    return;
-  }
-
-  setPosition(difference < 0 ? currentPosition : incomingPosition, now, false);
-  startAnimation();
+function wake(reason = "正在播放") {
+  mode = MODE.RUNNING;
+  sleepReason = "";
+  el.dashboard.classList.remove("is-efficiency");
+  text(el.efficiencyValue,"活动模式");
+  text(el.efficiencyDetail,"播放进度实时渲染");
+  text(el.renderState,"活动 / 实时渲染");
+  text(el.sleepReason,reason);
 }
-
-function updateProgress() {
-  animationFrame = 0;
-  if (sleeping || document.hidden || syncMode !== SYNC.RUNNING || !state)
-    return;
-
-  const now = performance.now();
-  const targetPosition = getLogicalPosition(now);
-  const deltaMs = Math.max(0, now - lastFrameAt);
-  const gap = targetPosition - visualPosition;
-  const smoothingMs = gap > 0.6
-    ? RECOVERY_SMOOTHING_MS
-    : NORMAL_SMOOTHING_MS;
-
-  visualPosition = clampToDuration(
-    smoothPosition(visualPosition, targetPosition, deltaMs, smoothingMs)
-  );
-  lastFrameAt = now;
-  renderPosition(visualPosition);
-  startAnimation();
+function schedulePausedSleep() {
+  clearPauseTimer();
+  pauseTimer = window.setTimeout(() => {
+    pauseTimer = 0;
+    if (mediaState?.playbackStatus === "Paused")
+      setEfficiency("暂停超过 5 分钟");
+  },CONFIG.pauseSleepMs);
 }
-
 function render(media) {
-  const available = Boolean(media?.isAvailable);
-  if (!available) {
-    enterSleep("no-media", true);
+  lastSnapshotAt = Date.now();
+  if (!media) return;
+  mediaState = media;
+  renderMetadata(media);
+  setCover(media.coverUrl || null);
+  const key = trackKey(media);
+  const changed = key !== currentTrackKey;
+  const status = media.playbackStatus;
+  text(el.playbackLabel,status === "Playing" ? "正在播放" : status === "Paused" ? "已暂停" : status || "未知状态");
+  el.playbackPill.className = "pill " + (status === "Playing" ? "pill-live" : status === "Paused" ? "pill-paused" : "pill-muted");
+
+  if (!media.isAvailable) {
+    currentTrackKey = key;
+    setEfficiency("无可用媒体会话");
+    releaseCover();
+    text(el.availabilityValue,"不可用");
+    text(el.coverStatus,"无媒体封面");
     return;
   }
-
-  const now = performance.now();
-  const previousState = state;
-  const nextTrackKey = getTrackKey(media);
-  const trackChanged = nextTrackKey !== currentTrackKey;
-  const wasPlaying = previousState?.playbackStatus === "Playing";
-
-  state = media;
-
-  if (media.playbackStatus === "Stopped" || media.playbackStatus === "Closed") {
-    enterSleep("stopped");
+  if (status === "Stopped" || status === "Closed") {
+    currentTrackKey = key;
+    setEfficiency(status === "Closed" ? "媒体会话已关闭" : "播放已停止");
     return;
   }
-
-  if (media.playbackStatus === "Paused") {
-    currentTrackKey = nextTrackKey;
-    syncMode = SYNC.PAUSED;
+  if (status === "Paused") {
+    currentTrackKey = key;
+    clearPauseTimer();
     stopAnimation();
-    lastReportedPosition = getReportedPosition(media, getLogicalPosition(now));
-    setPosition(lastReportedPosition, now, true);
-    wakePage();
-    renderMetadata(media);
-    setCover(media.coverUrl || null);
-    renderPosition(visualPosition, true);
+    mode = MODE.PAUSED;
+    setAnchor(getReportedPosition(media,logicalPosition()),performance.now(),true);
+    renderProgress(visualPosition,true);
+    el.dashboard.classList.remove("is-efficiency");
+    text(el.efficiencyValue,"静态暂停");
+    text(el.efficiencyDetail,"无动画帧；等待恢复或进入效率模式");
+    text(el.renderState,"暂停 / 静态渲染");
+    text(el.sleepReason,"暂停计时中");
     schedulePausedSleep();
     return;
   }
-
-  if (media.playbackStatus !== "Playing") {
-    enterSleep("stopped");
+  if (status !== "Playing") {
+    setEfficiency("等待可识别的播放状态");
     return;
   }
 
-  clearPauseSleepTimer();
-  wakePage();
-
-  if (trackChanged || !wasPlaying || syncMode === SYNC.PAUSED || syncMode === SYNC.SLEEPING) {
-    currentTrackKey = nextTrackKey;
-    syncMode = SYNC.RUNNING;
-    renderMetadata(media);
-    setCover(media.coverUrl || null);
-    resetPlayhead(media, now, true);
+  clearPauseTimer();
+  if (changed || mode !== MODE.RUNNING) {
+    currentTrackKey = key;
+    wake();
+    const initial = getTimelinePosition(media,Date.now());
+    lastReportedPosition = getReportedPosition(media);
+    setAnchor(initial,performance.now(),true);
+    renderProgress(visualPosition,true);
     startAnimation();
     return;
   }
-
-  renderMetadata(media);
-  setCover(media.coverUrl || null);
-  synchronizePosition(media, now);
-}
-
-function handleVisibilityChange() {
-  if (document.hidden) {
-    if (syncMode === SYNC.RUNNING)
-      setPosition(getLogicalPosition(), performance.now(), false);
-    stopAnimation();
-    return;
-  }
-
-  if (!state || sleeping) return;
-  if (state.playbackStatus === "Playing") {
-    syncMode = SYNC.RUNNING;
-    startAnimation();
-  } else if (state.playbackStatus === "Paused") {
-    renderPosition(visualPosition, true);
-  }
-}
-
-document.addEventListener("visibilitychange", handleVisibilityChange);
-window.addEventListener("pagehide", () => {
-  stopAnimation();
-  clearPauseSleepTimer();
-  releaseCover();
-});
-window.addEventListener("pageshow", () => {
-  if (state && !sleeping) {
-    setCover(state.coverUrl || null);
-    if (state.playbackStatus === "Playing") {
-      syncMode = SYNC.RUNNING;
-      startAnimation();
-    } else {
-      renderPosition(visualPosition, true);
-      if (state.playbackStatus === "Paused")
-        schedulePausedSleep();
+  const now = performance.now();
+  const reported = getReportedPosition(media);
+  const current = logicalPosition(now);
+  if (!hasValidTimelineTimestamp(media,Date.now())) {
+    if (lastReportedPosition !== null && reported < lastReportedPosition-CONFIG.backwardSeekThresholdSeconds) {
+      setAnchor(reported,now,true);
+    } else if (reported-current > CONFIG.forwardSnapThresholdSeconds) {
+      setAnchor(reported,now,true);
+    } else if (reported-current > .6) {
+      setAnchor(reported,now,false);
     }
+  } else {
+    const incoming = getTimelinePosition(media,Date.now());
+    const difference = incoming-current;
+    if (difference < -CONFIG.backwardSeekThresholdSeconds || difference > CONFIG.forwardSnapThresholdSeconds)
+      setAnchor(incoming,now,true);
+    else
+      setAnchor(difference < 0 ? current : incoming,now,false);
   }
+  lastReportedPosition = reported;
+  startAnimation();
+}
+function updateProgress() {
+  animationFrame = 0;
+  if (mode !== MODE.RUNNING || document.hidden || !mediaState) {
+    text(el.animationState,"已挂起");
+    return;
+  }
+  const now = performance.now();
+  const target = logicalPosition(now);
+  const gap = target-visualPosition;
+  const smoothing = gap > .6 ? CONFIG.recoverySmoothingMs : CONFIG.normalSmoothingMs;
+  visualPosition = clampPosition(smoothPosition(visualPosition,target,Math.max(0,now-lastFrameAt),smoothing));
+  lastFrameAt = now;
+  renderProgress(visualPosition);
+  startAnimation();
+}
+function onVisibilityChange() {
+  text(el.visibilityState,document.hidden ? "后台 / 不可见" : "前台 / 可见");
+  if (document.hidden) {
+    if (mode === MODE.RUNNING) setAnchor(logicalPosition(),performance.now(),false);
+    stopAnimation();
+  } else if (mode === MODE.RUNNING) {
+    startAnimation();
+  }
+}
+function onConnectionChange(value) {
+  connected = Boolean(value);
+  el.connectionPill.className = "pill " + (connected ? "pill-online" : "pill-offline");
+  text(el.connectionLabel,connected ? "服务已连接" : "连接断开");
+  text(el.wsState,connected ? "已连接" : "未连接");
+}
+document.addEventListener("visibilitychange",onVisibilityChange);
+window.addEventListener("pagehide",() => { stopAnimation(); clearPauseTimer(); releaseCover(); });
+window.addEventListener("pageshow",() => {
+  if (mediaState?.playbackStatus === "Playing" && mode === MODE.RUNNING) startAnimation();
+  if (mediaState?.playbackStatus === "Paused" && mode === MODE.PAUSED) schedulePausedSleep();
 });
+text(el.visibilityState,document.hidden ? "后台 / 不可见" : "前台 / 可见");
+text(el.protocolVersion,window.FluentFlyout?.protocolVersion || "未加载");
 
+// REQUIRED INTERFACE: these subscriptions are supplied by fluentflyout-api.js.
+// Keep the method names and callback semantics; presentation code is customizable.
 if (window.FluentFlyout?.onMediaChanged) {
   window.FluentFlyout.onMediaChanged(render);
+  window.FluentFlyout.onConnectionChanged?.(onConnectionChange);
 } else {
-  console.error("FluentFlyout browser API was not loaded. Include /js/fluentflyout-api.js before app.js.");
+  console.error("FluentFlyout API missing. Keep /js/fluentflyout-api.js in index.html.");
+  text(el.footerState,"通信接口未加载：请检查 fluentflyout-api.js");
 }

@@ -210,3 +210,53 @@ function. `FluentFlyout.getState()` returns the latest snapshot, and
 Templates may reference CSS, JavaScript and images using paths relative to the selected theme folder. These requests are served from that folder through the guarded `/theme-assets/` route. Absolute application paths such as `/js/fluentflyout-api.js` continue to work. Paths cannot be used to access files outside the selected theme folder.
 
 Treat imported templates as trusted local code: HTML scripts execute in OBS's browser context. Only immediate theme folders are selectable; nested folders are asset subfolders, not separate themes.
+
+
+## Default theme customization notes
+
+The refreshed default theme is a diagnostic player layout. It displays every
+field in the Protocol 1.0 `NowPlayingInfo` snapshot (including session ID,
+sequence, playback state, availability, cover identifiers, SMTC timeline
+timestamp and service update timestamp), plus renderer connection and
+efficiency-mode state.
+
+Progress adaptation is explicitly reported:
+- **SMTC timeline**: a valid `timelineLastUpdatedTime` is available; the
+  playhead is extrapolated from Position and that timestamp.
+- **UpdatedAt fallback**: SMTC's timeline timestamp is missing or sentinel;
+  UpdatedAt supplies the initial fallback anchor.
+- **Position direct**: neither timestamp is usable; only reported Position and
+  obvious discontinuities can guide the local playhead.
+- **Incomplete**: Duration is missing or invalid, so a percentage cannot be
+  calculated. The raw Position and Duration remain visible.
+
+The default renderer enters efficiency mode immediately when there is no
+available media or playback is stopped/closed. After five minutes of continuous
+pause it also enters efficiency mode. In efficiency mode animation frames and
+pause timers are stopped; the single WebSocket subscription remains active so
+new media can wake the page. A paused track does not run a progress animation.
+
+### What can be customized
+
+- `index.html`: layout, labels, section ordering and additional presentation
+  elements. Keep every DOM ID referenced by `app.js`.
+- `css/fluent.css`: all visual styling. The `:root` variables near the top
+  are the primary color, spacing and radius controls.
+- `js/app.js`: presentation logic, displayed diagnostics, smoothing values
+  in `CONFIG`, and the five-minute pause efficiency timeout.
+
+### Required interface code — do not remove
+
+- In `index.html`, keep `/js/fluentflyout-api.js` before the renderer module.
+- Keep `window.FluentFlyout.onMediaChanged(callback)` and
+  `window.FluentFlyout.onConnectionChanged(callback)` subscriptions.
+- Keep the Protocol 1.0 payload property names. The renderer expects the
+  normalized fields documented above.
+- Keep the `progress-utils.js` module exports imported by `app.js`.
+- The API adapter owns the local token, WebSocket reconnect logic and cover
+  URL authentication. Never print the complete cover URL because its query
+  string contains the process-local token.
+
+The HTML comments mark required DOM/API contracts and customizable regions.
+The CSS comments mark theme tokens. The JavaScript comments distinguish the
+required interface contract from customizable presentation configuration.

@@ -6,6 +6,17 @@
   let currentSequence = -1;
   let connected = false;
   let reconnectDelay = 1000;
+  const connectionListeners = new Set();
+
+  // REQUIRED INTERFACE: notify renderers when the transport connects/disconnects.
+  // Do not remove this event contract unless all themes stop using it.
+  function emitConnection(value) {
+    connected = value;
+    for (const listener of [...connectionListeners]) {
+      try { listener(value); }
+      catch (error) { console.error("FluentFlyout connection callback failed", error); }
+    }
+  }
 
   function emit(state) {
     currentState = state;
@@ -26,7 +37,7 @@
       );
 
       socket.onopen = () => {
-        connected = true;
+        emitConnection(true);
         currentSequence = -1;
         reconnectDelay = 1000;
       };
@@ -63,12 +74,12 @@
 
       socket.onerror = () => socket.close();
       socket.onclose = () => {
-        connected = false;
+        emitConnection(false);
         window.setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 10000);
       };
     } catch (error) {
-      connected = false;
+      emitConnection(false);
       console.warn("FluentFlyout WebSocket unavailable", error);
       window.setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 10000);
@@ -79,6 +90,13 @@
     protocolVersion: "1.0",
     getState: () => currentState,
     isConnected: () => connected,
+    // REQUIRED INTERFACE: connection-state subscription for renderer diagnostics.
+    onConnectionChanged(callback) {
+      if (typeof callback !== "function") throw new TypeError("callback must be a function");
+      connectionListeners.add(callback);
+      callback(connected);
+      return () => connectionListeners.delete(callback);
+    },
     onMediaChanged(callback) {
       if (typeof callback !== "function") throw new TypeError("callback must be a function");
       listeners.add(callback);

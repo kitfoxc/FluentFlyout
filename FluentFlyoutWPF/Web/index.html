@@ -1,38 +1,147 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>FluentFlyout Now Playing</title>
+  <title>FluentFlyout · Now Playing</title>
+  <!-- CUSTOMIZABLE: theme title, typography and visual assets may be changed.
+       REQUIRED: keep the stylesheet path relative to this theme folder. -->
   <link rel="stylesheet" href="css/fluent.css">
 </head>
 <body>
-  <main id="widget" class="widget is-hidden is-sleeping" aria-live="polite">
-    <div class="cover-wrap">
-      <div class="cover-placeholder" id="cover-placeholder">♫</div>
-      <img id="cover" class="cover" alt="" hidden>
-    </div>
-    <section class="track">
-      <div class="eyebrow">
-        <span class="playing-dot" id="playing-dot"></span>
-        <span id="status-label">NOW PLAYING</span>
-        <span class="player" id="player"></span>
+  <!-- REQUIRED DOM CONTRACT: app.js selects these IDs. You may rearrange
+       elements, add wrappers and restyle them, but keep every referenced ID. -->
+  <main id="dashboard" class="dashboard is-efficiency" aria-live="polite">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">FF</span>
+        <div>
+          <div class="brand-title">FLUENTFLYOUT <span>/ NOW PLAYING</span></div>
+          <div class="brand-subtitle">LOCAL MEDIA TELEMETRY</div>
+        </div>
       </div>
-      <div class="title" id="title">Nothing playing</div>
-      <div class="artist" id="artist"></div>
-      <div class="album" id="album"></div>
-      <div class="progress-area" id="progress-area">
-        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-        <div class="time-row">
-          <span id="position">0:00</span>
-          <span id="duration">0:00</span>
+      <div class="header-status">
+        <span id="playback-pill" class="pill pill-muted"><i class="status-dot"></i><span id="playback-label">等待媒体</span></span>
+        <span id="connection-pill" class="pill pill-offline"><i class="status-dot"></i><span id="connection-label">连接中</span></span>
+      </div>
+    </header>
+
+    <section class="hero panel">
+      <div class="cover-frame">
+        <div id="cover-placeholder" class="cover-placeholder"><span>♫</span><small>NO ARTWORK</small></div>
+        <img id="cover" class="cover" alt="专辑封面" hidden>
+        <span id="cover-state" class="cover-state">封面等待中</span>
+      </div>
+      <div class="track-main">
+        <div class="section-kicker"><span class="live-indicator"></span> CURRENT SESSION <span id="player-name" class="player-name">未识别音源</span></div>
+        <h1 id="track-title">尚无媒体信息</h1>
+        <div id="track-artist" class="track-artist">等待 SMTC 媒体会话</div>
+        <div id="track-album" class="track-album">—</div>
+        <div class="progress-block">
+          <div class="progress-heading">
+            <span>播放进度</span>
+            <strong id="progress-percent">—</strong>
+          </div>
+          <div id="progress-track" class="progress-track" role="progressbar" aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <div class="time-row"><span id="position">0:00</span><span id="duration">时长未知</span></div>
+          <div class="progress-foot">
+            <span id="progress-adaptation" class="adaptation-tag">等待进度数据</span>
+            <span id="progress-detail">尚未收到媒体快照</span>
+          </div>
         </div>
       </div>
     </section>
-    <div class="connection" id="connection" title="Connection status"></div>
+
+    <section class="status-strip">
+      <article class="status-card">
+        <span class="metric-label">媒体可用性</span>
+        <strong id="availability-value">未知</strong>
+        <small id="availability-detail">等待状态快照</small>
+      </article>
+      <article class="status-card">
+        <span class="metric-label">渲染运行模式</span>
+        <strong id="efficiency-value">效率模式</strong>
+        <small id="efficiency-detail">动画与高频刷新已挂起</small>
+      </article>
+      <article class="status-card">
+        <span class="metric-label">进度适配</span>
+        <strong id="adaptation-value">待检测</strong>
+        <small id="adaptation-detail">等待 SMTC 时间线</small>
+      </article>
+      <article class="status-card">
+        <span class="metric-label">状态序列</span>
+        <strong id="sequence-value">—</strong>
+        <small id="updated-value">更新时间：—</small>
+      </article>
+    </section>
+
+    <section class="details-grid">
+      <article class="panel detail-panel">
+        <div class="panel-heading"><span class="panel-index">01</span><h2>媒体会话</h2><span class="panel-caption">MEDIA SESSION</span></div>
+        <dl class="data-list">
+          <div><dt>会话 ID</dt><dd id="session-id" class="mono breakable">—</dd></div>
+          <div><dt>音源名称</dt><dd id="source-name">—</dd></div>
+          <div><dt>播放状态</dt><dd id="source-status">—</dd></div>
+          <div><dt>媒体可用</dt><dd id="source-available">—</dd></div>
+          <div><dt>歌曲标题</dt><dd id="source-title">—</dd></div>
+          <div><dt>艺术家</dt><dd id="source-artist">—</dd></div>
+          <div><dt>专辑</dt><dd id="source-album">—</dd></div>
+        </dl>
+      </article>
+
+      <article class="panel detail-panel">
+        <div class="panel-heading"><span class="panel-index">02</span><h2>时间线诊断</h2><span class="panel-caption">TIMELINE</span></div>
+        <dl class="data-list">
+          <div><dt>SMTC Position</dt><dd id="reported-position" class="mono">—</dd></div>
+          <div><dt>Duration</dt><dd id="reported-duration" class="mono">—</dd></div>
+          <div><dt>时间戳来源</dt><dd id="timestamp-source">—</dd></div>
+          <div><dt>Timeline 更新时间</dt><dd id="timeline-updated" class="mono">—</dd></div>
+          <div><dt>Position 推算方式</dt><dd id="progress-method">—</dd></div>
+          <div><dt>进度百分比</dt><dd id="reported-percent" class="mono">—</dd></div>
+          <div><dt>更新时间差</dt><dd id="sample-age" class="mono">—</dd></div>
+        </dl>
+      </article>
+
+      <article class="panel detail-panel">
+        <div class="panel-heading"><span class="panel-index">03</span><h2>封面与数据</h2><span class="panel-caption">PAYLOAD</span></div>
+        <dl class="data-list">
+          <div><dt>封面状态</dt><dd id="cover-status">—</dd></div>
+          <div><dt>封面 ID</dt><dd id="cover-id" class="mono">—</dd></div>
+          <div><dt>封面接口</dt><dd id="cover-endpoint">—</dd></div>
+          <div><dt>Sequence</dt><dd id="sequence-detail" class="mono">—</dd></div>
+          <div><dt>UpdatedAt</dt><dd id="updated-at" class="mono">—</dd></div>
+          <div><dt>快照接收</dt><dd id="snapshot-received" class="mono">—</dd></div>
+        </dl>
+      </article>
+
+      <article class="panel detail-panel">
+        <div class="panel-heading"><span class="panel-index">04</span><h2>运行状态</h2><span class="panel-caption">RUNTIME</span></div>
+        <dl class="data-list">
+          <div><dt>WebSocket</dt><dd id="ws-state">连接中</dd></div>
+          <div><dt>渲染状态</dt><dd id="render-state">效率模式</dd></div>
+          <div><dt>休眠原因</dt><dd id="sleep-reason">等待媒体</dd></div>
+          <div><dt>动画帧</dt><dd id="animation-state">已挂起</dd></div>
+          <div><dt>浏览器页面</dt><dd id="visibility-state">可见</dd></div>
+          <div><dt>协议版本</dt><dd id="protocol-version">1.0</dd></div>
+        </dl>
+      </article>
+    </section>
+
+    <footer class="footer">
+      <span>FLUENTFLYOUT · LOCAL OBS RENDERER</span>
+      <span id="footer-state">等待本地媒体服务</span>
+      <span>THEME / DEFAULT</span>
+    </footer>
   </main>
+
+  <!-- REQUIRED INTERFACE: this bundled adapter authenticates the local
+       WebSocket and exposes window.FluentFlyout. Do not remove or rename it. -->
   <script src="/js/fluentflyout-api.js"></script>
+  <!-- CUSTOMIZABLE RENDERER: app.js controls presentation and progress visuals.
+       Keep the module path relative to the selected theme folder. -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
