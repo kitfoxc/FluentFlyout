@@ -26,6 +26,13 @@ jobs:
         uses: microsoft/setup-msbuild@v3
       - name: Test Browser progress helpers
         run: node --test FluentFlyoutWPF/Web/js/progress-utils.test.mjs
+      - name: Check renderer and browser API syntax
+        shell: pwsh
+        run: |
+          node --input-type=module --check < FluentFlyoutWPF/Web/js/app.js
+          if ($LASTEXITCODE -ne 0) { throw "Renderer module syntax check failed." }
+          node --check FluentFlyoutWPF/Web/js/fluentflyout-api.js
+          if ($LASTEXITCODE -ne 0) { throw "Browser API syntax check failed." }
       - name: Restore solution
         run: dotnet restore FluentFlyout.sln
       - name: Restore OBS service tests
