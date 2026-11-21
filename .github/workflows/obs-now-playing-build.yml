@@ -29,7 +29,9 @@ jobs:
       - name: Check renderer and browser API syntax
         shell: pwsh
         run: |
-          node --input-type=module --check < FluentFlyoutWPF/Web/js/app.js
+          $rendererCheck = Join-Path $env:RUNNER_TEMP "obs-renderer-check.mjs"
+          Copy-Item "FluentFlyoutWPF/Web/js/app.js" $rendererCheck
+          node --check $rendererCheck
           if ($LASTEXITCODE -ne 0) { throw "Renderer module syntax check failed." }
           node --check FluentFlyoutWPF/Web/js/fluentflyout-api.js
           if ($LASTEXITCODE -ne 0) { throw "Browser API syntax check failed." }
