@@ -44,7 +44,7 @@ const el = Object.fromEntries([
   wsState:"ws-state", renderState:"render-state", sleepReason:"sleep-reason",
   animationState:"animation-state", visibilityState:"visibility-state",
   protocolVersion:"protocol-version", footerState:"footer-state",
-  coverPlaceholder:"cover-placeholder"
+  coverPlaceholder:"cover-placeholder", coverState:"cover-state"
 }[key] || key))]));
 
 const CONFIG = Object.freeze({
