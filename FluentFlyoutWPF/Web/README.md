@@ -77,16 +77,30 @@ valid SMTC timestamp is not treated as proof that playback has stopped. The calc
 position is bounded by the reported track duration when known.
 
 The renderer keeps separate logical and visual playheads. The logical
-playhead is authoritative and advances using the browser's monotonic clock.
-The visual playhead follows it with time-based exponential smoothing, using a
-short time constant for ordinary drift and a longer one for forward recovery
-gaps. Clear backward seeks and very large discontinuities reset immediately;
-small backwards sample noise is ignored. The progress fill is updated with
-CSS transform at animation-frame frequency, while the displayed time text is
-throttled to five updates per second. There is no sample-count calibration or
-Position-advance requirement, so providers that publish a valid initial
-timeline but do not continuously change Position can still show a moving
-playhead.
+playhead uses the original SMTC timeline model and the browser's monotonic
+clock; the visual playhead is a presentation-only layer.
+
+When a new track starts with a valid SMTC timeline timestamp, a time-bounded
+startup guard protects the first visual anchor for up to 4.2 seconds. It waits
+for two consecutive advancing raw Position samples and for the estimated
+playhead to catch up before releasing early. If Position remains unchanged,
+the guard times out and resumes from the last displayed position. During the
+guard, a backward timeline sample may refresh the logical anchor but cannot
+pull the visible playhead backward. A raw Position decrease greater than the
+backward-seek threshold is treated as an explicit seek and is applied
+immediately.
+
+Outside that guard, a timestamp-derived backward delta alone is not treated as
+a seek: some providers refresh TimelineLastUpdatedTime while Position remains
+at zero during startup. Backward snaps require a corresponding raw Position
+discontinuity. The visual playhead otherwise interpolates forward only;
+ordinary forward drift uses a short exponential-smoothing time constant and
+larger forward recovery gaps use a longer one. Confirmed seeks and large
+forward discontinuities snap immediately rather than animating in the wrong
+direction. The progress fill is updated with CSS transform at animation-frame
+frequency, while the displayed time text is throttled to five updates per
+second. The guard is presentation-only and does not change SMTC, WebSocket,
+or the original logical timeline calculation.
 
 SMTC does not expose a universal buffering flag. If a provider reports
 Playing while audio is actually buffering, the logical playhead may continue

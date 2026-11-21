@@ -6,6 +6,7 @@ const source = await readFile(new URL("./progress-utils.js", import.meta.url), "
 const moduleUrl = "data:text/javascript;base64," + Buffer.from(source).toString("base64");
 const {
   clampPosition,
+  createStartupProgressGuard,
   getReportedPosition,
   getTimelinePosition,
   hasValidTimelineTimestamp,
@@ -92,3 +93,107 @@ test("SMTC timestamp validity is independent of the fallback UpdatedAt anchor", 
     timelineLastUpdatedTime: "2026-11-21T00:00:00.000Z"
   }, now), true);
 });
+
+
+test("startup guard holds while Position is unchanged and the incoming timeline trails the visual playhead", () => {
+  const guard = createGuard();
+  guard.start(0, 0);
+  const first = guard.observe({
+    reportedPosition: 0,
+    incomingPosition: 0.1,
+    visualPosition: 1.2,
+    now: 1000
+  });
+  assert.equal(first.active, true);
+  assert.equal(first.hold, true);
+  assert.equal(first.advancingSamples, 0);
+
+  const second = guard.observe({
+    reportedPosition: 0,
+    incomingPosition: 0.1,
+    visualPosition: 1.2,
+    now: 2000
+  });
+  assert.equal(second.active, true);
+  assert.equal(second.hold, true);
+});
+
+test("startup guard releases after two advancing Position samples catch up", () => {
+  const guard = createGuard();
+  guard.start(0, 0);
+  const first = guard.observe({
+    reportedPosition: 0.1,
+    incomingPosition: 1.0,
+    visualPosition: 1.1,
+    now: 1000
+  });
+  assert.equal(first.active, true);
+  assert.equal(first.advancingSamples, 1);
+
+  const second = guard.observe({
+    reportedPosition: 0.2,
+    incomingPosition: 1.2,
+    visualPosition: 1.1,
+    now: 2000
+  });
+  assert.equal(second.active, false);
+  assert.equal(second.released, true);
+  assert.equal(second.reason, "stable");
+});
+
+test("startup guard times out without forcing the visual playhead backward", () => {
+  const guard = createGuard();
+  guard.start(0, 0);
+  const result = guard.observe({
+    reportedPosition: 0,
+    incomingPosition: 0.1,
+    visualPosition: 2.5,
+    now: 4200
+  });
+  assert.equal(result.active, false);
+  assert.equal(result.released, true);
+  assert.equal(result.reason, "timeout");
+});
+
+test("startup guard accepts an explicit raw-position seek immediately", () => {
+  const guard = createGuard();
+  guard.start(4, 0);
+  const result = guard.observe({
+    reportedPosition: 1,
+    incomingPosition: 1.1,
+    visualPosition: 4.2,
+    now: 500,
+    explicitSeek: true
+  });
+  assert.equal(result.active, false);
+  assert.equal(result.released, true);
+  assert.equal(result.reason, "seek");
+});
+
+test("startup guard requires consecutive advancing samples", () => {
+  const guard = createGuard();
+  guard.start(0, 0);
+  guard.observe({
+    reportedPosition: 0.1,
+    incomingPosition: 0.1,
+    visualPosition: 0.1,
+    now: 100
+  });
+  const repeated = guard.observe({
+    reportedPosition: 0.1,
+    incomingPosition: 0.1,
+    visualPosition: 0.1,
+    now: 200
+  });
+  assert.equal(repeated.advancingSamples, 0);
+  assert.equal(repeated.active, true);
+});
+
+function createGuard() {
+  return createStartupProgressGuard({
+    maxDurationMs: 4200,
+    minAdvancingSamples: 2,
+    minPositionStepSeconds: 0.05,
+    catchUpToleranceSeconds: 0.15
+  });
+}

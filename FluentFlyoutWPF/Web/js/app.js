@@ -1,4 +1,5 @@
 import {
+  createStartupProgressGuard,
   getReportedPosition,
   getTimelinePosition,
   hasValidTimelineTimestamp,
@@ -21,7 +22,7 @@ const el = Object.fromEntries([
   "progressMethod", "reportedPercent", "sampleAge", "coverStatus", "coverId",
   "coverEndpoint", "sequenceDetail", "updatedAt", "snapshotReceived", "wsState",
   "renderState", "sleepReason", "animationState", "visibilityState",
-  "protocolVersion", "footerState"
+  "protocolVersion", "footerState", "visualStability"
 ].map(key => [key, document.getElementById(({
   trackTitle:"track-title", trackArtist:"track-artist", trackAlbum:"track-album",
   playerName:"player-name", playbackPill:"playback-pill", playbackLabel:"playback-label",
@@ -44,7 +45,8 @@ const el = Object.fromEntries([
   wsState:"ws-state", renderState:"render-state", sleepReason:"sleep-reason",
   animationState:"animation-state", visibilityState:"visibility-state",
   protocolVersion:"protocol-version", footerState:"footer-state",
-  coverPlaceholder:"cover-placeholder", coverState:"cover-state"
+  coverPlaceholder:"cover-placeholder", coverState:"cover-state",
+  visualStability:"visual-stability"
 }[key] || key))]));
 
 const CONFIG = Object.freeze({
@@ -55,7 +57,19 @@ const CONFIG = Object.freeze({
   recoverySmoothingMs: 500,
   backwardSeekThresholdSeconds: 0.8,
   forwardSnapThresholdSeconds: 8,
+  // CUSTOMIZABLE: maximum time to protect the first visual timeline anchor.
+  startupGuardMaxMs: 4200,
+  startupAdvancingSamples: 2,
+  startupMinPositionStepSeconds: 0.05,
+  startupCatchUpToleranceSeconds: 0.15,
   textUpdateIntervalMs: 200
+});
+
+const startupGuard = createStartupProgressGuard({
+  maxDurationMs: CONFIG.startupGuardMaxMs,
+  minAdvancingSamples: CONFIG.startupAdvancingSamples,
+  minPositionStepSeconds: CONFIG.startupMinPositionStepSeconds,
+  catchUpToleranceSeconds: CONFIG.startupCatchUpToleranceSeconds
 });
 
 const MODE = Object.freeze({ EFFICIENCY: "efficiency", RUNNING: "running", PAUSED: "paused" });
@@ -135,6 +149,23 @@ function setAnchor(position, now = performance.now(), syncVisual = false) {
   logicalAnchor = clampPosition(position);
   logicalAnchorAt = now;
   if (syncVisual) visualPosition = logicalAnchor;
+}
+function setStartupGuardUi(active, reason = null) {
+  el.dashboard.classList.toggle("is-startup-hold",Boolean(active));
+  if (!el.visualStability) return;
+  el.visualStability.className = "visual-state-tag" + (active ? " is-holding" : "");
+  text(el.visualStability,active ? "启动保护" :
+    reason === "stable" ? "数据已稳定" :
+    reason === "seek" ? "Seek 已确认" : "平滑渲染");
+}
+function beginStartupGuard(media, now = performance.now()) {
+  if (hasValidTimelineTimestamp(media,Date.now())) {
+    startupGuard.start(getReportedPosition(media),now);
+    setStartupGuardUi(true);
+  } else {
+    startupGuard.cancel();
+    setStartupGuardUi(false);
+  }
 }
 function renderProgress(position, force = false) {
   const duration = durationSeconds();
@@ -256,6 +287,8 @@ function setCover(url) {
   image.src = url;
 }
 function setEfficiency(reason) {
+  startupGuard.cancel();
+  setStartupGuardUi(false);
   mode = MODE.EFFICIENCY;
   sleepReason = reason;
   stopAnimation();
@@ -314,7 +347,15 @@ function render(media) {
     clearPauseTimer();
     stopAnimation();
     mode = MODE.PAUSED;
-    setAnchor(getReportedPosition(media,logicalPosition()),performance.now(),true);
+    const now = performance.now();
+    const wasStartupGuardActive = startupGuard.isActive;
+    const pausedPosition = wasStartupGuardActive
+      ? Math.max(visualPosition,getTimelinePosition(media,Date.now()))
+      : getReportedPosition(media,logicalPosition(now));
+    startupGuard.cancel();
+    setStartupGuardUi(false);
+    setAnchor(pausedPosition,now,true);
+    lastReportedPosition = getReportedPosition(media);
     renderProgress(visualPosition,true);
     el.dashboard.classList.remove("is-efficiency");
     text(el.efficiencyValue,"静态暂停");
@@ -331,33 +372,93 @@ function render(media) {
 
   clearPauseTimer();
   if (changed || mode !== MODE.RUNNING) {
+    const resetForNewPlayback = changed ||
+      ["无可用媒体会话","播放已停止","媒体会话已关闭"].includes(sleepReason);
     currentTrackKey = key;
     wake();
+    const now = performance.now();
     const initial = getTimelinePosition(media,Date.now());
-    lastReportedPosition = getReportedPosition(media);
-    setAnchor(initial,performance.now(),true);
+    const reported = getReportedPosition(media);
+    if (resetForNewPlayback) {
+      setAnchor(initial,now,true);
+      beginStartupGuard(media,now);
+    } else {
+      startupGuard.cancel();
+      setStartupGuardUi(false);
+      setAnchor(Math.max(initial,visualPosition),now,false);
+    }
+    lastReportedPosition = reported;
     renderProgress(visualPosition,true);
     startAnimation();
     return;
   }
+
   const now = performance.now();
   const reported = getReportedPosition(media);
   const current = logicalPosition(now);
-  if (!hasValidTimelineTimestamp(media,Date.now())) {
-    if (lastReportedPosition !== null && reported < lastReportedPosition-CONFIG.backwardSeekThresholdSeconds) {
-      setAnchor(reported,now,true);
-    } else if (reported-current > CONFIG.forwardSnapThresholdSeconds) {
-      setAnchor(reported,now,true);
-    } else if (reported-current > .6) {
-      setAnchor(reported,now,false);
+  const wallNow = Date.now();
+  const timelineValid = hasValidTimelineTimestamp(media,wallNow);
+  const incoming = getTimelinePosition(media,wallNow);
+  const backwardSeek = lastReportedPosition !== null &&
+    reported < lastReportedPosition-CONFIG.backwardSeekThresholdSeconds;
+  const forwardSeek = incoming-current > CONFIG.forwardSnapThresholdSeconds;
+  let handledByStartupGuard = false;
+
+  if (startupGuard.isActive && !timelineValid) {
+    startupGuard.cancel();
+    setStartupGuardUi(false);
+  }
+
+  if (startupGuard.isActive && timelineValid) {
+    handledByStartupGuard = true;
+    const guard = startupGuard.observe({
+      reportedPosition:reported,
+      incomingPosition:incoming,
+      visualPosition,
+      now,
+      explicitSeek:backwardSeek || forwardSeek
+    });
+
+    if (guard.released) {
+      setStartupGuardUi(false,guard.reason);
+      if (guard.reason === "seek") {
+        setAnchor(incoming,now,true);
+        renderProgress(visualPosition,true);
+      } else {
+        // Resume from whichever is further ahead: the new anchor or the
+        // position already shown to the user. Never animate a false rollback.
+        setAnchor(Math.max(incoming,visualPosition),now,false);
+      }
+    } else {
+      // Keep the logical anchor current during startup, but let the visual
+      // playhead hold its last displayed value if this sample moves backward.
+      setAnchor(incoming,now,false);
     }
-  } else {
-    const incoming = getTimelinePosition(media,Date.now());
-    const difference = incoming-current;
-    if (difference < -CONFIG.backwardSeekThresholdSeconds || difference > CONFIG.forwardSnapThresholdSeconds)
-      setAnchor(incoming,now,true);
-    else
-      setAnchor(difference < 0 ? current : incoming,now,false);
+  }
+
+  if (!handledByStartupGuard) {
+    if (!timelineValid) {
+      if (backwardSeek) {
+        setAnchor(reported,now,true);
+        renderProgress(visualPosition,true);
+      } else if (reported-current > CONFIG.forwardSnapThresholdSeconds) {
+        setAnchor(reported,now,true);
+        renderProgress(visualPosition,true);
+      } else if (reported-current > .6) {
+        setAnchor(reported,now,false);
+      }
+    } else {
+      const difference = incoming-current;
+      // A timestamp-only backward correction is not a seek. Some providers
+      // refresh the timeline timestamp while Position remains at zero during
+      // startup; only a raw Position discontinuity authorizes a backward snap.
+      if (backwardSeek || forwardSeek) {
+        setAnchor(incoming,now,true);
+        renderProgress(visualPosition,true);
+      } else {
+        setAnchor(difference < 0 ? current : incoming,now,false);
+      }
+    }
   }
   lastReportedPosition = reported;
   startAnimation();
@@ -369,10 +470,15 @@ function updateProgress() {
     return;
   }
   const now = performance.now();
-  const target = logicalPosition(now);
+  visualPosition = clampPosition(visualPosition);
+  const target = Math.max(visualPosition,logicalPosition(now));
   const gap = target-visualPosition;
-  const smoothing = gap > .6 ? CONFIG.recoverySmoothingMs : CONFIG.normalSmoothingMs;
-  visualPosition = clampPosition(smoothPosition(visualPosition,target,Math.max(0,now-lastFrameAt),smoothing));
+  if (gap > 0.001) {
+    const smoothing = gap > .6 ? CONFIG.recoverySmoothingMs : CONFIG.normalSmoothingMs;
+    visualPosition = clampPosition(
+      smoothPosition(visualPosition,target,Math.max(0,now-lastFrameAt),smoothing)
+    );
+  }
   lastFrameAt = now;
   renderProgress(visualPosition);
   startAnimation();

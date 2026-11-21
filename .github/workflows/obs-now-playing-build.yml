@@ -6,6 +6,7 @@ on:
       - feature/obs-now-playing-m1
       - fix/tray-exit-dashboard-layout
       - refactor/obs-progress-rendering-m5
+      - fix/obs-visual-progress-stability
   pull_request:
     branches:
       - master

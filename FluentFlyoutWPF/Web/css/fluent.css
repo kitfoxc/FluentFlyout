@@ -65,6 +65,9 @@ body { padding:12px; }
 .progress-fill { width:100%; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--ff-accent-strong),#b2dcff); transform:scaleX(0); transform-origin:left center; will-change:transform; }
 .time-row { justify-content:space-between; margin-top:6px; color:var(--ff-muted); font-size:9px; font-variant-numeric:tabular-nums; }
 .progress-foot { justify-content:space-between; gap:8px; margin-top:9px; color:var(--ff-muted); font-size:9px; }
+.visual-state-tag { flex:0 0 auto; padding:4px 7px; border:1px solid rgba(119,224,181,.2); border-radius:6px; color:var(--ff-good); background:rgba(119,224,181,.06); white-space:nowrap; font-size:8px; }
+.visual-state-tag.is-holding { color:var(--ff-warn); border-color:rgba(243,199,121,.24); background:rgba(243,199,121,.07); }
+.dashboard.is-startup-hold .progress-fill { opacity:.88; filter:saturate(.82); }
 .adaptation-tag { padding:4px 7px; border:1px solid rgba(139,197,255,.2); border-radius:6px; color:var(--ff-accent); background:rgba(84,167,255,.07); }
 #progress-detail { text-align:right; }
 .status-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--ff-gap); margin-top:var(--ff-gap); }
