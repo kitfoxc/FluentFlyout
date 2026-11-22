@@ -1,114 +1,534 @@
-/* CUSTOMIZABLE THEME TOKENS: change these values to reskin the player. */
+/*
+ * FLUENT THEME — PROPORTIONAL LAYOUT
+ *
+ * Design canvas: 800 × 296 (player card), matching the supplied reference.
+ * The outer card is always kept at this aspect ratio and scaled to fit the
+ * available browser canvas. Internal dimensions use cqw/cqh relative to the
+ * card, so artwork, typography, controls, spacing and timeline scale together.
+ *
+ * CUSTOMIZABLE:
+ *   - Palette variables in :root and prefers-color-scheme: dark.
+ *   - --card-aspect-ratio if you intentionally want a different design frame.
+ *   - --outer-gutter if you want more/less transparent space around the card.
+ *
+ * REQUIRED:
+ *   - Keep .dashboard as a size query container.
+ *   - Keep .player-card as a size query container.
+ *   - Keep the .player-layout wrapper; its cqw/cqh values are relative to
+ *     .player-card.
+ *   - Keep IDs used by js/app.js.
+ */
+
 :root {
-  color-scheme: dark;
-  --ff-bg: #0b101a;
-  --ff-panel: rgba(20,28,42,.88);
-  --ff-panel-strong: rgba(25,35,52,.96);
-  --ff-border: rgba(159,184,220,.14);
-  --ff-accent: #8bc5ff;
-  --ff-accent-strong: #54a7ff;
-  --ff-primary: #f4f7fc;
-  --ff-secondary: #aebbd0;
-  --ff-muted: #718198;
-  --ff-good: #77e0b5;
-  --ff-warn: #f3c779;
-  --ff-bad: #ff8f9b;
-  --ff-radius: 18px;
-  --ff-gap: 12px;
-  font-family: "Segoe UI Variable","Segoe UI",sans-serif;
+  color-scheme: light;
+
+  /* CUSTOMIZABLE: palette — light mode */
+  --stage-blue: rgba(76, 148, 196, .62);
+  --stage-warm: rgba(248, 157, 55, .76);
+  --stage-violet: rgba(115, 149, 183, .22);
+
+  --card-bg:
+    linear-gradient(112deg, rgba(242, 233, 219, .93), rgba(248, 224, 201, .91));
+  --card-border: rgba(91, 73, 58, .42);
+  --card-shadow: 0 1.75cqw 4.25cqw rgba(31, 48, 62, .24),
+                 inset 0 .125cqw 0 rgba(255,255,255,.58);
+
+  --title: #3d3835;
+  --subtitle: #918983;
+  --muted: #8b8580;
+  --icon: #3c3937;
+  --icon-muted: rgba(105, 94, 86, .27);
+  --accent: #b47b50;
+  --accent-deep: #8e5b35;
+  --track: #88827d;
+  --knob-ring: #fff;
+  --source-tile: #fff;
+  --source-ink: #181818;
+  --status: #716b66;
+  --status-dot: #7b9d78;
+  --art-shadow: 0 .625cqw 1.75cqw rgba(49, 34, 24, .18);
+
+  /* CUSTOMIZABLE: reference design ratio and outside gutter */
+  --card-aspect-ratio: 800 / 296;
+  --outer-gutter: 1.22vw;
+
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 }
-* { box-sizing:border-box; }
-[hidden] { display:none !important; }
-html,body { width:100%; min-height:100%; margin:0; background:transparent; color:var(--ff-primary); }
-body { padding:12px; }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    /* CUSTOMIZABLE: palette — dark mode */
+    --stage-blue: rgba(22, 35, 53, .78);
+    --stage-warm: rgba(115, 30, 48, .62);
+    --stage-violet: rgba(71, 39, 64, .38);
+
+    --card-bg:
+      linear-gradient(112deg, rgba(24, 29, 35, .97), rgba(48, 23, 34, .96));
+    --card-border: rgba(255, 255, 255, .15);
+    --card-shadow: 0 2cqw 4.75cqw rgba(0, 0, 0, .42),
+                   inset 0 .125cqw 0 rgba(255,255,255,.08);
+
+    --title: #f4f1ef;
+    --subtitle: #9b9394;
+    --muted: #aaa2a1;
+    --icon: #f7f4f1;
+    --icon-muted: rgba(205, 190, 190, .23);
+    --accent: #e3c16f;
+    --accent-deep: #b68e43;
+    --track: #88878a;
+    --knob-ring: #e5e2df;
+    --source-tile: #fff;
+    --source-ink: #151515;
+    --status: #a7a0a2;
+    --status-dot: #8eb68b;
+    --art-shadow: 0 .875cqw 2.25cqw rgba(0, 0, 0, .35);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  color: var(--title);
+  background: transparent;
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * REQUIRED SIZE CONTAINER:
+ * cqw/cqh on .player-card resolve against this available canvas.
+ * Padding reproduces the reference's 10 px margin at 820 × 316.
+ */
 .dashboard {
-  width:min(100%,1120px); margin:0 auto; padding:18px;
-  border:1px solid var(--ff-border); border-radius:24px;
-  background:radial-gradient(ellipse at 8% 0%,rgba(74,133,204,.18),transparent 42%),linear-gradient(145deg,rgba(13,20,32,.97),rgba(8,13,22,.96));
-  box-shadow:0 22px 70px rgba(0,0,0,.35);
-  backdrop-filter:blur(22px) saturate(135%);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--outer-gutter);
+  overflow: hidden;
+  container-type: size;
+
+  background:
+    radial-gradient(ellipse at 3% 4%, var(--stage-blue), transparent 55%),
+    radial-gradient(ellipse at 98% 5%, var(--stage-warm), transparent 56%),
+    radial-gradient(ellipse at 56% 100%, var(--stage-violet), transparent 60%),
+    linear-gradient(120deg, rgba(41, 99, 143, .10), rgba(227, 135, 58, .10));
+  transition: background .25s ease;
 }
-.topbar,.brand,.header-status,.pill,.section-kicker,.progress-heading,.time-row,.progress-foot,.panel-heading,.footer { display:flex; align-items:center; }
-.topbar { justify-content:space-between; gap:14px; padding:2px 2px 16px; border-bottom:1px solid var(--ff-border); }
-.brand { gap:11px; min-width:0; }
-.brand-mark { display:grid; place-items:center; width:36px; height:36px; border-radius:11px; color:#071321; background:linear-gradient(140deg,#c4e6ff,#5daeff); font-size:12px; font-weight:900; letter-spacing:-.06em; }
-.brand-title { font-size:11px; font-weight:800; letter-spacing:.13em; }
-.brand-title span { color:var(--ff-muted); font-weight:600; }
-.brand-subtitle { margin-top:4px; color:var(--ff-muted); font-size:8px; letter-spacing:.2em; }
-.header-status { flex-wrap:wrap; justify-content:flex-end; gap:7px; }
-.pill { gap:7px; min-height:25px; padding:0 9px; border:1px solid var(--ff-border); border-radius:99px; font-size:9px; color:var(--ff-secondary); white-space:nowrap; }
-.status-dot,.live-indicator { width:6px; height:6px; flex:0 0 6px; border-radius:50%; background:currentColor; }
-.pill-live,.pill-online { color:var(--ff-good); border-color:rgba(119,224,181,.25); background:rgba(119,224,181,.07); }
-.pill-live .status-dot,.pill-online .status-dot { box-shadow:0 0 9px currentColor; }
-.pill-paused { color:var(--ff-warn); }
-.pill-offline { color:var(--ff-bad); }
-.pill-muted { color:var(--ff-muted); }
-.panel,.status-card { border:1px solid var(--ff-border); border-radius:var(--ff-radius); background:var(--ff-panel); }
-.hero { display:grid; grid-template-columns:clamp(112px,18vw,174px) minmax(0,1fr); gap:clamp(16px,3vw,28px); padding:clamp(14px,2.2vw,22px); margin-top:14px; }
-.cover-frame { position:relative; width:100%; aspect-ratio:1; overflow:hidden; border:1px solid var(--ff-border); border-radius:15px; background:linear-gradient(145deg,#263b55,#111a29); }
-.cover,.cover-placeholder { width:100%; height:100%; object-fit:cover; }
-.cover-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#9eb8d5; }
-.cover-placeholder span { font-size:44px; opacity:.8; }
-.cover-placeholder small { font-size:8px; letter-spacing:.18em; }
-.cover-state { position:absolute; left:7px; bottom:7px; padding:4px 6px; border-radius:5px; color:#dcecff; background:rgba(4,10,18,.72); font-size:8px; }
-.track-main { min-width:0; align-self:center; }
-.section-kicker { gap:7px; color:var(--ff-muted); font-size:9px; font-weight:800; letter-spacing:.15em; }
-.live-indicator { background:var(--ff-accent); box-shadow:0 0 9px var(--ff-accent); }
-.player-name { margin-left:auto; max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ff-secondary); letter-spacing:0; font-weight:600; }
-#track-title { margin:11px 0 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:clamp(19px,3vw,30px); line-height:1.18; letter-spacing:-.035em; }
-.track-artist { margin-top:6px; color:var(--ff-secondary); font-size:14px; }
-.track-album { margin-top:4px; color:var(--ff-muted); font-size:11px; }
-.progress-block { margin-top:19px; }
-.progress-heading { justify-content:space-between; margin-bottom:7px; color:var(--ff-secondary); font-size:10px; }
-.progress-heading strong { color:var(--ff-primary); font-size:11px; font-variant-numeric:tabular-nums; }
-.progress-track { height:6px; overflow:hidden; border-radius:99px; background:rgba(255,255,255,.11); }
-.progress-fill { width:100%; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--ff-accent-strong),#b2dcff); transform:scaleX(0); transform-origin:left center; will-change:transform; }
-.time-row { justify-content:space-between; margin-top:6px; color:var(--ff-muted); font-size:9px; font-variant-numeric:tabular-nums; }
-.progress-foot { justify-content:space-between; gap:8px; margin-top:9px; color:var(--ff-muted); font-size:9px; }
-.visual-state-tag { flex:0 0 auto; padding:4px 7px; border:1px solid rgba(119,224,181,.2); border-radius:6px; color:var(--ff-good); background:rgba(119,224,181,.06); white-space:nowrap; font-size:8px; }
-.visual-state-tag.is-holding { color:var(--ff-warn); border-color:rgba(243,199,121,.24); background:rgba(243,199,121,.07); }
-.dashboard.is-startup-hold .progress-fill { opacity:.88; filter:saturate(.82); }
-.adaptation-tag { padding:4px 7px; border:1px solid rgba(139,197,255,.2); border-radius:6px; color:var(--ff-accent); background:rgba(84,167,255,.07); }
-#progress-detail { text-align:right; }
-.status-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--ff-gap); margin-top:var(--ff-gap); }
-.status-card { min-width:0; padding:12px 14px; }
-.metric-label { display:block; color:var(--ff-muted); font-size:9px; }
-.status-card strong { display:block; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:16px; font-weight:750; }
-.status-card small { display:block; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ff-muted); font-size:9px; }
-.details-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ff-gap); margin-top:var(--ff-gap); }
-.detail-panel { min-width:0; padding:14px 15px 10px; }
-.panel-heading { gap:9px; padding-bottom:10px; border-bottom:1px solid var(--ff-border); }
-.panel-index { color:var(--ff-accent); font-size:9px; font-weight:800; }
-.panel-heading h2 { margin:0; font-size:12px; font-weight:750; }
-.panel-caption { margin-left:auto; color:var(--ff-muted); font-size:8px; letter-spacing:.14em; }
-.data-list { margin:4px 0 0; }
-.data-list>div { display:grid; grid-template-columns:minmax(105px,38%) minmax(0,1fr); gap:10px; padding:7px 0; border-bottom:1px solid rgba(159,184,220,.07); }
-.data-list>div:last-child { border-bottom:0; }
-.data-list dt { color:var(--ff-muted); font-size:9px; }
-.data-list dd { min-width:0; margin:0; color:var(--ff-secondary); text-align:right; font-size:9px; overflow-wrap:anywhere; }
-.mono { font-family:Consolas,"Cascadia Code",monospace; font-variant-numeric:tabular-nums; }
-.breakable { word-break:break-all; }
-.footer { justify-content:space-between; gap:10px; padding:14px 2px 0; color:var(--ff-muted); font-size:8px; letter-spacing:.1em; }
-.is-efficiency .progress-fill { will-change:auto; }
-.is-efficiency .cover,.is-efficiency .cover-placeholder { transition:none; }
-.is-efficiency { backdrop-filter:none; }
-@media (max-width:680px) {
-  body { padding:6px; }
-  .dashboard { padding:11px; border-radius:17px; }
-  .topbar { align-items:flex-start; }
-  .header-status { max-width:46%; }
-  .hero { grid-template-columns:86px minmax(0,1fr); gap:12px; padding:12px; }
-  .section-kicker { font-size:8px; }
-  #track-title { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:18px; }
-  .track-artist { font-size:11px; }
-  .track-album { font-size:9px; }
-  .progress-block { margin-top:12px; }
-  .progress-foot { align-items:flex-start; flex-direction:column; }
-  #progress-detail { text-align:left; }
-  .status-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .details-grid { grid-template-columns:1fr; }
-  .footer { flex-wrap:wrap; font-size:7px; }
+
+/*
+ * REQUIRED SIZE CONTAINER:
+ * Keep the complete player frame at the reference ratio. The width is
+ * constrained by both canvas dimensions, so the card never clips or stretches.
+ */
+.player-card {
+  container-type: size;
+  position: relative;
+  width: min(100cqw, 270.27027cqh);
+  aspect-ratio: var(--card-aspect-ratio);
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
 }
-@media (prefers-reduced-motion:reduce) {
-  *,*::before,*::after { animation:none !important; transition:none !important; }
+
+/*
+ * REQUIRED INNER LAYOUT:
+ * All proportional measurements below use the player-card as their reference.
+ * At the original 800 × 296 card size:
+ *   1cqw = 8 px; 1cqh ≈ 2.96 px.
+ */
+.player-layout {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 20.5cqw minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 3.5cqw;
+  row-gap: 4.39cqh;
+  padding: 9.12cqh 3.5cqw 6.42cqh;
+  overflow: hidden;
+
+  border: .125cqw solid var(--card-border);
+  border-radius: 2.125cqw;
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  -webkit-backdrop-filter: blur(3cqw) saturate(125%);
+  backdrop-filter: blur(3cqw) saturate(125%);
+}
+
+/* Artwork — square and proportional at every card size. */
+.artwork-wrap {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  width: 20.5cqw;
+  height: 20.5cqw;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 1.25cqw;
+  background: rgba(128, 118, 108, .16);
+  box-shadow: var(--art-shadow);
+}
+
+.cover,
+.cover-placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.cover {
+  display: block;
+  object-fit: cover;
+}
+
+.cover[hidden] {
+  display: none;
+}
+
+.cover-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .5cqw;
+  color: var(--muted);
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.30), rgba(130,120,110,.12));
+}
+
+.placeholder-note {
+  font-size: 6cqw;
+  line-height: 1;
+  font-weight: 300;
+}
+
+.placeholder-caption {
+  font-size: 1cqw;
+  letter-spacing: .18em;
+  font-weight: 700;
+}
+
+/* Track title and subtitle. */
+.player-content {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: stretch;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.375cqh 0 0.125cqh;
+}
+
+.track-heading {
+  min-width: 0;
+}
+
+#track-title {
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--title);
+  font-size: 3.5cqw;
+  font-weight: 650;
+  line-height: 1.22;
+  letter-spacing: -.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-subtitle {
+  margin: .5cqh 0 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--subtitle);
+  font-size: 3.375cqw;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -.018em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Transport symbols are visual-only; Protocol 1.0 has no command API. */
+.control-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2.25cqw;
+  margin-top: 1.5cqh;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 4.25cqw;
+  min-width: 0;
+}
+
+.transport-icon {
+  width: 2.875cqw;
+  height: 3.25cqw;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--icon);
+}
+
+.transport-icon svg {
+  width: 2.875cqw;
+  height: 2.875cqw;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.transport-prev svg path:first-child,
+.transport-next svg path:first-child {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.transport-muted {
+  color: var(--icon-muted);
+}
+
+.transport-muted svg {
+  fill: none;
+  stroke-width: 2.1;
+}
+
+.playback-indicator {
+  width: 8.5cqw;
+  height: 8.5cqw;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1.125cqw;
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 .25cqw 0 var(--accent-deep);
+}
+
+.playback-indicator svg {
+  width: 3.5cqw;
+  height: 3.5cqw;
+  fill: currentColor;
+}
+
+.playback-indicator .icon-play {
+  display: none;
+}
+
+.playback-indicator.is-paused .icon-pause {
+  display: none;
+}
+
+.playback-indicator.is-paused .icon-play {
+  display: block;
+}
+
+/* Source and connection status. */
+.source-block {
+  min-width: 0;
+  max-width: 17.75cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.125cqw;
+  color: var(--subtitle);
+}
+
+.source-icon {
+  width: 3.5cqw;
+  height: 3.5cqw;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: .875cqw;
+  color: var(--source-ink);
+  background: var(--source-tile);
+  font-size: 2.75cqw;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.source-name {
+  min-width: 0;
+  max-width: 10.25cqw;
+  overflow: hidden;
+  font-size: 2.125cqw;
+  line-height: 1.16;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.source-chevron {
+  flex: 0 0 auto;
+  margin-left: .125cqw;
+  color: var(--icon);
+  font-size: 3.625cqw;
+  font-weight: 300;
+  line-height: 1;
+  visibility: hidden;
+}
+
+.connection-dot {
+  width: .875cqw;
+  height: .875cqw;
+  flex: 0 0 auto;
+  margin-left: .125cqw;
+  border-radius: 50%;
+  background: #b56a66;
+  box-shadow: 0 0 0 .375cqw rgba(181,106,102,.13);
+}
+
+.connection-dot.is-online {
+  background: var(--status-dot);
+  box-shadow: 0 0 0 .375cqw color-mix(in srgb, var(--status-dot) 18%, transparent);
+}
+
+/* Timeline — label columns, track and thumb retain the reference proportions. */
+.timeline {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 9cqw minmax(0, 1fr) 9cqw;
+  align-items: center;
+  gap: 2.75cqw;
+  padding-top: 7cqh;
+  padding-bottom: 4.125cqh;
+}
+
+.time-label {
+  color: var(--muted);
+  font-size: 2.875cqw;
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.time-duration {
+  text-align: right;
+}
+
+.progress-track {
+  position: relative;
+  width: 100%;
+  height: 1cqw;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: visible;
+  isolation: isolate;
+}
+
+.progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--accent-deep);
+  will-change: width;
+}
+
+.progress-knob {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 4.5cqw;
+  height: 4.5cqw;
+  border: .625cqw solid var(--knob-ring);
+  border-radius: 50%;
+  background: var(--accent-deep);
+  box-shadow: 0 .125cqw .375cqw rgba(0,0,0,.18);
+  transform: translate(-50%, -50%);
+  will-change: left;
+}
+
+.progress-knob[hidden] {
+  display: none;
+}
+
+/* Subtle status line. */
+.micro-status {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .875cqw;
+  overflow: hidden;
+  color: var(--status);
+  font-size: 1.25cqw;
+  line-height: 0;
+  letter-spacing: .015em;
+  opacity: .72;
+  white-space: nowrap;
+  visibility: hidden;
+}
+
+.micro-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.micro-separator {
+  opacity: .5;
+}
+
+.micro-spacer {
+  flex: 1 1 auto;
+}
+
+/*
+ * Sleep behavior:
+ * The renderer still stops requestAnimationFrame and releases idle resources.
+ * The card itself remains visible (as requested in the preceding discussion).
+ * To restore the old hidden-card behavior, set opacity: 0 and visibility:hidden.
+ */
+.dashboard.is-sleeping .player-card {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: none;
+}
+
+/* Respect OS accessibility preference without changing the layout geometry. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -47,7 +47,7 @@ test("UpdatedAt is used when the SMTC timestamp is missing or a sentinel", () =>
     duration: 100,
     timelineLastUpdatedTime: "1601-01-01T00:00:00.000Z",
     updatedAt: "2026-11-21T00:00:01.000Z"
-  }, now), 15);
+  }, now, { allowUpdatedAtFallback: true }), 15);
 });
 
 test("a timestamp too far in the future falls back to the reported position", () => {

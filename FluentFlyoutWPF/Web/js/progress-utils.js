@@ -1,20 +1,22 @@
-// Pure progress helpers shared by the built-in Browser Source renderer.
-// The playhead is extrapolated from the SMTC timeline timestamp, matching the
-// original FluentFlyout seek-bar model. UpdatedAt is a fallback anchor for
-// providers that omit or leave LastUpdatedTime at its sentinel value.
+// REQUIRED PROGRESS HELPERS.
+// The SMTC timestamp is the primary anchor. UpdatedAt is used only for the
+// first anchor when LastUpdatedTime is missing/sentinel; later snapshots
+// without a valid SMTC timestamp must not repeatedly re-anchor the playhead.
 
 export function getReportedPosition(media, fallback = 0) {
-  const rawPosition = media?.position;
-  if (rawPosition === null || rawPosition === undefined || rawPosition === "")
-    return Math.max(0, Number(fallback) || 0);
+  const raw = media?.position;
+  if (raw === null || raw === undefined || raw === "") {
+    const safeFallback = Number(fallback);
+    return Number.isFinite(safeFallback) ? Math.max(0, safeFallback) : 0;
+  }
 
-  const position = Number(rawPosition);
+  const position = Number(raw);
   return Number.isFinite(position) && position >= 0
     ? position
     : Math.max(0, Number(fallback) || 0);
 }
 
-function parseAnchorTimestamp(value, now) {
+export function parseAnchorTimestamp(value, now = Date.now()) {
   const timestamp = Date.parse(value || "");
   if (!Number.isFinite(timestamp) || timestamp < Date.UTC(2000, 0, 1))
     return null;
@@ -28,23 +30,32 @@ export function hasValidTimelineTimestamp(media, now = Date.now()) {
 }
 
 export function clampPosition(position, duration = 0) {
-  const safePosition = Number.isFinite(position) ? Math.max(0, position) : 0;
+  const safePosition = Number.isFinite(Number(position))
+    ? Math.max(0, Number(position))
+    : 0;
   const safeDuration = Number(duration);
   return Number.isFinite(safeDuration) && safeDuration > 0
     ? Math.min(safeDuration, safePosition)
     : safePosition;
 }
 
-export function getTimelinePosition(media, now = Date.now()) {
-  const reportedPosition = getReportedPosition(media);
-  const timestamp = parseAnchorTimestamp(media?.timelineLastUpdatedTime, now)
-    ?? parseAnchorTimestamp(media?.updatedAt, now);
+export function getTimelinePosition(
+  media,
+  now = Date.now(),
+  { allowUpdatedAtFallback = false, fallback = 0 } = {}
+) {
+  const reported = getReportedPosition(media, fallback);
+  const timestamp =
+    parseAnchorTimestamp(media?.timelineLastUpdatedTime, now) ??
+    (allowUpdatedAtFallback
+      ? parseAnchorTimestamp(media?.updatedAt, now)
+      : null);
 
   if (timestamp === null)
-    return clampPosition(reportedPosition, media?.duration);
+    return clampPosition(reported, media?.duration);
 
   const elapsedSeconds = Math.max(0, now - timestamp) / 1000;
-  return clampPosition(reportedPosition + elapsedSeconds, media?.duration);
+  return clampPosition(reported + elapsedSeconds, media?.duration);
 }
 
 export function smoothPosition(current, target, deltaMs, timeConstantMs) {
@@ -56,13 +67,12 @@ export function smoothPosition(current, target, deltaMs, timeConstantMs) {
   return safeCurrent + (safeTarget - safeCurrent) * alpha;
 }
 
-
-/**
- * Protects the visual playhead from transient backward timeline anchors while
- * a newly-started track is still publishing its first usable Position samples.
- *
- * This helper does not calculate playback time. It only decides when the
- * renderer may stop holding a backward visual correction.
+/*
+ * Startup visual guard:
+ * - It does not calculate playback time.
+ * - It holds a visual rollback while the first timeline samples settle.
+ * - It releases after two advancing samples catch up, on a confirmed seek,
+ *   or after a bounded timeout.
  */
 export function createStartupProgressGuard({
   maxDurationMs = 4200,
@@ -77,17 +87,16 @@ export function createStartupProgressGuard({
 
   const finitePosition = value => {
     const number = Number(value);
-    return value !== null && value !== undefined && value !== "" && Number.isFinite(number) && number >= 0
-      ? number
-      : null;
+    return value !== null && value !== undefined && value !== "" &&
+      Number.isFinite(number) && number >= 0 ? number : null;
   };
 
   const result = (released, reason = null, incomingPosition = null, visualPosition = null) => ({
     active,
     released,
     reason,
-    hold: active && incomingPosition !== null && visualPosition !== null
-      && incomingPosition < visualPosition - catchUpToleranceSeconds,
+    hold: active && incomingPosition !== null && visualPosition !== null &&
+      incomingPosition < visualPosition - catchUpToleranceSeconds,
     advancingSamples
   });
 
@@ -133,8 +142,8 @@ export function createStartupProgressGuard({
 
       const incoming = finitePosition(incomingPosition);
       const visual = finitePosition(visualPosition);
-      const caughtUp = incoming !== null && visual !== null
-        && incoming >= visual - catchUpToleranceSeconds;
+      const caughtUp = incoming !== null && visual !== null &&
+        incoming >= visual - catchUpToleranceSeconds;
 
       if (advancingSamples >= minAdvancingSamples && caughtUp) {
         active = false;
