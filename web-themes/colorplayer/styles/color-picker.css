@@ -5,7 +5,7 @@
 }
 .brightness-label {
   position: absolute; left: 97px; top: 78px; line-height: 22px;
-  font: 18px/22px serif; color: var(--text);
+  font: 16px/21px "Microsoft YaHei UI", serif; color: var(--secondary);
 }
 .brightness-track { border: 1px solid var(--line); background: linear-gradient(to right, black, var(--hue-color)); }
 #brightness { position: absolute; inset: -4px 0; margin: 0; width: 100%; height: 20px; opacity: 0; cursor: pointer; touch-action: none; }
