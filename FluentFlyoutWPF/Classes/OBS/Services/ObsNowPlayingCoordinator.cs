@@ -177,7 +177,7 @@ public sealed class ObsNowPlayingCoordinator
             _mediaStateStore,
             _coverArtStore,
             _themeManager,
-            () => _getThemeFolderName() ?? "default",
+            () => _getThemeFolderName() ?? WebThemeManager.DefaultThemeFolderName,
             _getPort());
     }
 

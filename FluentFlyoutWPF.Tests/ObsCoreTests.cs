@@ -151,7 +151,7 @@ public sealed class ObsCoreTests
     {
         var root = Path.Combine(Path.GetTempPath(), "FluentFlyout.Tests", Guid.NewGuid().ToString("N"));
         var themeRoot = Path.Combine(root, "themes");
-        var defaultFolder = Path.Combine(themeRoot, "default");
+        var defaultFolder = Path.Combine(themeRoot, "fluent");
 
         try
         {
@@ -168,7 +168,7 @@ public sealed class ObsCoreTests
             Assert.Contains("href=\"css/fluent.css\"", File.ReadAllText(index));
             Assert.Contains("src=\"js/app.js\"", File.ReadAllText(index));
             Assert.Contains("/js/fluentflyout-api.js", File.ReadAllText(index));
-            Assert.Equal(app, manager.ResolveThemeAssetPath("js/app.js", "default"));
+            Assert.Equal(app, manager.ResolveThemeAssetPath("js/app.js", "fluent"));
 
             // A user edit is authoritative; a second start must not silently
             // overwrite it. Missing individual assets may be restored.
@@ -187,7 +187,7 @@ public sealed class ObsCoreTests
     }
 
     [Fact]
-    public void WebThemeManager_UpgradesHtmlOnlyDefaultWithoutOverwritingItsEntry()
+    public void WebThemeManager_ResolvesLegacyDefaultNamesWithoutListingOrReplacingOldTheme()
     {
         var root = Path.Combine(Path.GetTempPath(), "FluentFlyout.Tests", Guid.NewGuid().ToString("N"));
         var themeRoot = Path.Combine(root, "themes");
@@ -202,9 +202,12 @@ public sealed class ObsCoreTests
             var manager = new WebThemeManager(themeDirectory: themeRoot);
 
             Assert.Equal(legacyHtml, File.ReadAllText(Path.Combine(defaultFolder, "index.html")));
-            Assert.True(File.Exists(manager.ResolveThemeAssetPath("css/fluent.css", "default")));
-            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/app.js", "default")));
-            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/progress-utils.js", "default")));
+            Assert.Equal(new[] { "fluent" }, manager.GetAvailableThemes().ToArray());
+            Assert.Equal(Path.Combine(themeRoot, "fluent", "index.html"), manager.ResolveThemePath("default"));
+            Assert.Equal(manager.ResolveThemePath("fluent"), manager.ResolveThemePath("default.html"));
+            Assert.True(File.Exists(manager.ResolveThemeAssetPath("css/fluent.css", "fluent")));
+            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/app.js", "fluent")));
+            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/progress-utils.js", "fluent")));
         }
         finally
         {

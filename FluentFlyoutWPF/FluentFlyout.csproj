@@ -62,7 +62,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Renderer files are embedded only as first-run seeds for Roaming/web-theme/default.
+    <!-- Renderer files are embedded only as first-run seeds for Roaming/web-theme/fluent.
          They are not copied as loose MSIX content. The stable browser API stays bundled. -->
     <None Remove="Web\**\*" />
     <EmbeddedResource Include="Web\index.html" LogicalName="FluentFlyoutWPF.Web.Renderer.index.html" />

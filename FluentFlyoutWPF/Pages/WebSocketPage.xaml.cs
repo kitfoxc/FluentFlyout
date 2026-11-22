@@ -108,7 +108,7 @@ public partial class WebSocketPage : Page
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(
                     item.Tag as string,
-                    string.Equals(selected, "default.html", StringComparison.OrdinalIgnoreCase) ? "default" : selected,
+                    WebThemeManager.IsLegacyDefaultTheme(selected) ? WebThemeManager.DefaultThemeFolderName : selected,
                     StringComparison.OrdinalIgnoreCase));
 
             if (ThemeComboBox.SelectedIndex < 0 && ThemeComboBox.Items.Count > 0)
@@ -117,13 +117,13 @@ public partial class WebSocketPage : Page
                     .OfType<ComboBoxItem>()
                     .FirstOrDefault(item => string.Equals(
                         item.Tag as string,
-                        "default",
+                        WebThemeManager.DefaultThemeFolderName,
                         StringComparison.OrdinalIgnoreCase))
                     ?? ThemeComboBox.Items[0];
 
                 // Normalize selections saved by the previous file-based theme picker.
                 SettingsManager.Current.WebSocketThemeFileName =
-                    (ThemeComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "default";
+                    (ThemeComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? WebThemeManager.DefaultThemeFolderName;
             }
 
             ThemeFolderText.Text = themeManager.ThemeDirectory;

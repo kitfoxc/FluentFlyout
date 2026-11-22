@@ -152,7 +152,7 @@ FluentFlyout creates the user theme directory on first launch:
 `%APPDATA%\\FluentFlyout\\web-theme`
 
 On first initialization, the bundled renderer template is extracted into
-`web-theme/default` as `index.html`, `css/fluent.css`, `js/app.js`, and
+`web-theme/fluent` as `index.html`, `css/fluent.css`, `js/app.js`, and
 `js/progress-utils.js`. All four files are then served directly from that
 writable directory. Edit any of these files and manually refresh the OBS Browser
 Source to see the changes; no application rebuild is needed. No automatic file
@@ -166,7 +166,7 @@ nested folders.
 
 ```text
 web-theme/
-├── default/
+├── fluent/
 │   ├── index.html
 │   ├── css/
 │   │   └── fluent.css
@@ -188,18 +188,18 @@ Put one entry HTML file in each theme folder. The preferred entry filename is
 first top-level `.html` file in that folder. Supporting CSS, JavaScript and
 images can live beside the HTML or in asset subfolders.
 
-The WebSocket page lists only immediate folder names, such as `default`,
+The WebSocket page lists only immediate folder names, such as `fluent`,
 `Minimal`, and `Neon`. It does not display HTML filenames or nested paths.
 Select a folder to apply its theme; connected OBS Browser Sources reload
 automatically. Use **Refresh themes** after adding or removing a theme folder.
 
-Legacy root-level `default.html` is copied into `default/index.html` during
-upgrade when the new default entry does not already exist. Existing
-`default/index.html` is never overwritten; missing default renderer CSS/JS
-files are initialized individually. Older HTML with absolute `/css/fluent.css`,
-`/js/app.js`, and `/js/progress-utils.js` references continues to work:
-these URLs are compatibility aliases to the external `default` folder. Other loose root
-HTML files are intentionally ignored; move each theme into its own folder.
+Saved selections named `default` or `default.html` now resolve to `fluent`.
+Legacy files remain on disk. The theme picker lists only `fluent` for the
+built-in theme. Existing files in `fluent/` are preserved, and missing built-in
+assets are seeded individually. The absolute compatibility routes
+`/css/fluent.css`, `/js/app.js`, and `/js/progress-utils.js` serve the built-in
+theme's assets from `fluent/`.
+
 A custom HTML file should include the shared browser API:
 
 ```html

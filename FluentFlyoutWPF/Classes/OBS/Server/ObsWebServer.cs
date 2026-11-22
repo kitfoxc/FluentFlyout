@@ -165,7 +165,7 @@ public sealed class ObsWebServer : IAsyncDisposable
 
         // HTML copied by previous builds uses these absolute renderer URLs.
         // Keep the old URLs working, but resolve their bytes from external
-        // web-theme/default rather than bundling another renderer in the MSIX.
+        // web-theme/fluent rather than bundling another renderer in the MSIX.
         app.MapGet("/css/fluent.css", (HttpContext context) =>
             ServeLegacyRendererAsset(context, "css/fluent.css", "text/css; charset=utf-8"));
         app.MapGet("/js/app.js", (HttpContext context) =>
@@ -234,7 +234,7 @@ public sealed class ObsWebServer : IAsyncDisposable
         try
         {
             var assetPath = _themeManager.ResolveThemeAssetPath(
-                relativePath, _themeManager.DefaultThemeFolderName);
+                relativePath, WebThemeManager.DefaultThemeFolderName);
             return Results.File(assetPath, contentType);
         }
         catch (FileNotFoundException)

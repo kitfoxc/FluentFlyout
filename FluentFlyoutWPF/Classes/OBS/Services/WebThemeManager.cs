@@ -13,7 +13,7 @@ namespace FluentFlyoutWPF.Classes.OBS.Services;
 public sealed class WebThemeManager
 {
     // Optional fixture source for tests. Production defaults are embedded at build time
-    // and expanded once into the user's writable web-theme/default directory.
+    // and expanded once into the user's writable web-theme/fluent directory.
     private readonly string? _sourceWebRoot;
 
     private static readonly (string FilePath, string ResourceName)[] DefaultRendererFiles =
@@ -39,7 +39,11 @@ public sealed class WebThemeManager
 
     public string ThemeDirectory { get; }
 
-    public string DefaultThemeFolderName => "default";
+    public const string DefaultThemeFolderName = "fluent";
+
+    internal static bool IsLegacyDefaultTheme(string? name) =>
+        string.Equals(name?.Trim(), "default", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name?.Trim(), "default.html", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Returns only immediate, ordinary theme directories.</summary>
     public IReadOnlyList<string> GetAvailableThemes()
@@ -49,7 +53,7 @@ public sealed class WebThemeManager
         return Directory.EnumerateDirectories(ThemeDirectory, "*", SearchOption.TopDirectoryOnly)
             .Where(directory => !IsReparsePoint(directory))
             .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Where(name => !string.IsNullOrWhiteSpace(name) && !IsLegacyDefaultTheme(name))
             .Cast<string>()
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -144,8 +148,8 @@ public sealed class WebThemeManager
     {
         EnsureDefaultTheme();
 
-        // Older settings stored "default.html"; migrate them to the new folder key.
-        if (string.Equals(folderName, "default.html", StringComparison.OrdinalIgnoreCase) ||
+        // Resolve saved names from both generations of the default theme.
+        if (IsLegacyDefaultTheme(folderName) ||
             string.IsNullOrWhiteSpace(folderName))
             folderName = DefaultThemeFolderName;
 
@@ -175,16 +179,6 @@ public sealed class WebThemeManager
         var defaultFolder = Path.Combine(ThemeDirectory, DefaultThemeFolderName);
         Directory.CreateDirectory(defaultFolder);
         ThrowIfReparsePoint(defaultFolder);
-
-        // Preserve an existing or customized index.html. Old installations copied
-        // only this HTML; supply their missing CSS and JS without overwriting it.
-        var indexPath = Path.Combine(defaultFolder, "index.html");
-        if (!File.Exists(indexPath))
-        {
-            var legacyDefault = Path.Combine(ThemeDirectory, "default.html");
-            if (File.Exists(legacyDefault) && !IsReparsePoint(legacyDefault))
-                File.Copy(legacyDefault, indexPath);
-        }
 
         foreach (var (relativePath, resourceName) in DefaultRendererFiles)
         {

@@ -7,6 +7,7 @@ using FluentFlyout.Classes.Settings;
 using FluentFlyout.Classes.Utils;
 using FluentFlyout.Controls;
 using FluentFlyoutWPF.Classes;
+using FluentFlyoutWPF.Classes.OBS.Services;
 using FluentFlyoutWPF.Models;
 using FluentFlyoutWPF.Windows;
 using System.Collections.ObjectModel;
@@ -882,7 +883,7 @@ public partial class UserSettings : ObservableObject
         ObsNowPlayingPreferenceConfigured = false;
         ObsNowPlayingPort = 17832;
         ObsPinnedSessionId = string.Empty;
-        WebSocketThemeFileName = "default";
+        WebSocketThemeFileName = WebThemeManager.DefaultThemeFolderName;
         AllowedApps = [];
         BlockedApps = [];
 
@@ -972,14 +973,14 @@ public partial class UserSettings : ObservableObject
 
         ObsPinnedSessionId = ObsPinnedSessionId?.Trim() ?? string.Empty;
 
-        if (string.Equals(WebSocketThemeFileName, "default.html", StringComparison.OrdinalIgnoreCase))
+        if (WebThemeManager.IsLegacyDefaultTheme(WebSocketThemeFileName))
         {
-            WebSocketThemeFileName = "default";
+            WebSocketThemeFileName = WebThemeManager.DefaultThemeFolderName;
         }
         else if (!IsValidThemeFolderName(WebSocketThemeFileName))
         {
             Logger.Warn("Invalid OBS theme folder setting; using the default theme");
-            WebSocketThemeFileName = "default";
+            WebSocketThemeFileName = WebThemeManager.DefaultThemeFolderName;
         }
         else
         {
