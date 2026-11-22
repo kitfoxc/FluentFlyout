@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Minimalist Player | Now Playing</title>
+  <link rel="icon" type="image/svg+xml" href="./default-cover.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="unselectable">
+  <div class="player-container" id="player">
+    <div class="info-section">
+      <div class="cover-wrapper">
+        <img id="album-cover" alt="专辑封面" src="./default-cover.svg">
+      </div>
+
+      <div class="text-wrapper">
+        <div class="meta-info">
+          <div id="track-title" class="title">
+            <div id="title-scroller" class="title-scroller">
+              <span>Nothing Playing</span>
+            </div>
+          </div>
+
+          <div id="track-artist-album-container" class="artist-album-container">
+            <div id="artist-album-scroller" class="artist-album-scroller">
+              <span id="track-artist-album-text">Get the music started</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress-section">
+          <div class="percent-placeholder" aria-hidden="true">0%</div>
+
+          <div
+            class="progress-bar-bg"
+            id="progress-track"
+            role="progressbar"
+            aria-label="播放进度"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-valuetext="等待媒体数据">
+            <div id="progress-fill" class="progress-bar-fill">
+              <div id="progress-thumb" class="progress-thumb"></div>
+            </div>
+          </div>
+
+          <div class="percent-badge">
+            <span id="time-percent" class="time-text">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REQUIRED PROJECT INTERFACE:
+       Loads the app-owned Protocol 1.0 adapter (auth, reconnect, sequence filtering,
+       and cover URL tokenization). Do not replace this with /api/query polling. -->
+  <script src="/js/fluentflyout-api.js"></script>
+  <!-- The renderer subscribes to window.FluentFlyout; it does not open a socket. -->
+  <script type="module" src="main.js"></script>
+</body>
+</html>

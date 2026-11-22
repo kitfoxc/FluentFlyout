@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FluentFlyout · Color Player</title>
+  <link rel="icon" href="./assets/default-cover.svg">
+  <link rel="stylesheet" href="./styles/layout.css">
+  <link rel="stylesheet" href="./styles/color-picker.css">
+  <link rel="stylesheet" href="./styles/player.css">
+  <script defer src="./scripts/layout.js"></script>
+  <script defer src="./scripts/color-picker.js"></script>
+  <script defer src="./scripts/player.js"></script>
+</head>
+<body>
+  <main class="stage" aria-label="正在播放与选色器">
+    <section class="picker" aria-label="选色器">
+      <div id="swatch"></div>
+      <label class="brightness-label" for="brightness">B</label>
+      <div class="brightness-track track-position">
+        <input type="range" id="brightness" aria-label="颜色亮度" min="0" max="100" value="78">
+      </div>
+      <div class="wheel">
+        <div id="ring"></div>
+        <div class="inner-mask"></div>
+        <div class="triangle-area">
+          <div id="triangle"></div>
+          <svg class="outline" viewBox="0 0 176 203" preserveAspectRatio="none" aria-hidden="true">
+            <polygon points="0,0 176,101.5 0,203"></polygon>
+          </svg>
+          <div id="triangle-selector" class="selector"></div>
+        </div>
+        <div class="ring-selector selector"></div>
+      </div>
+      <button class="add-icon" id="settings-button" type="button" aria-label="设置" title="设置" aria-expanded="false" aria-controls="settings-panel">
+        <svg viewBox="64 128 832 832" aria-hidden="true">
+        <path d="M896,128L896,960L64,960L64,128ZM832,192L128,192L128,896L832,896ZM448,576L256,576L256,512L448,512L448,320L512,320L512,512L704,512L704,576L512,576L512,768L448,768Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <div id="settings-panel" hidden>
+        <label><input type="checkbox" id="sync-rotation"> 色环随音乐播放启停</label>
+      </div>
+    </section>
+    <section id="player" aria-label="正在播放">
+      <img id="album-cover" src="./assets/default-cover.svg" alt="专辑封面" draggable="false">
+      <div class="metadata">
+        <div id="track-title" class="text-line"><div id="title-scroller" class="scroller"><span>Nothing Playing</span></div></div>
+        <div id="track-artist-album-container" class="text-line"><div id="artist-album-scroller" class="scroller"><span id="track-artist-album-text">Get the music started</span></div></div>
+      </div>
+      <div id="progress-track" class="track-position" role="progressbar" aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="progress-fill"><div id="progress-thumb"></div></div>
+      </div>
+      <div id="time-percent">0%</div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,309 @@
+/* Theme variables: main.js changes html[data-theme] from OBS scene names. */
+:root {
+  color-scheme: light;
+  --player-text-primary: #333333;
+  --player-text-secondary: #727272;
+  --player-text-muted: #9c9c9c;
+  --player-border: #cccccc;
+  --player-border-strong: #424242;
+  --player-thumb-bg: #ffffff;
+  --player-percent-bg: #ffffff;
+  --player-thumb-border: #a2a2a2;
+  --player-thumb-shadow: rgba(0,0,0,.2);
+  --player-badge-shadow: #000000;
+  --player-cover-placeholder: #f0f0f0;
+  --player-transition: .25s ease;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --player-text-primary: #eeeeee;
+  --player-text-secondary: #b8b8b8;
+  --player-text-muted: #929292;
+  --player-border: #555555;
+  --player-border-strong: #777777;
+  --player-thumb-bg: #d6d6d6;
+  --player-percent-bg: #292929;
+  --player-thumb-border: #888888;
+  --player-thumb-shadow: rgba(0,0,0,.55);
+  --player-badge-shadow: rgba(0,0,0,.85);
+  --player-cover-placeholder: #292929;
+}
+
+body, .title, .artist, .artist-album-container, .time-text,
+.cover-wrapper, .progress-thumb, .percent-badge {
+  transition: color var(--player-transition),
+              background-color var(--player-transition),
+              border-color var(--player-transition),
+              box-shadow var(--player-transition);
+}
+
+/* Global styles and base settings */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  transition: font-size 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+body {
+  background-color: transparent;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  font-family: 'Microsoft YaHei UI', sans-serif;
+  color: var(--player-text-primary);
+}
+
+.unselectable {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+}
+
+.unselectable img {
+  -webkit-user-drag: none;
+}
+
+/* Player container */
+.player-container {
+  width: 28rem;
+  background-color: transparent;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Main player row */
+.info-section {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Album artwork */
+.cover-wrapper {
+  width: 3.4rem;
+  height: 3.4rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  background-color: var(--player-cover-placeholder);
+  border: 1px solid var(--player-border-strong);
+  margin-left: 4.2rem;
+  margin-bottom: 0.85rem;
+}
+
+.cover-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+.cover-wrapper img.loaded {
+  opacity: 1;
+}
+
+/* Right-side content */
+.text-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+/* Track metadata */
+.meta-info {
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 0.3rem;
+}
+
+/* Track title */
+.title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--player-text-primary);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.title.is-scrolling {
+  mask-image: linear-gradient(90deg, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.title-scroller {
+  display: inline-flex;
+  white-space: nowrap;
+  justify-content: center;
+  width: 100%;
+}
+
+.title-scroller span {
+  padding-right: 2rem;
+}
+
+.title-scroller.animate {
+  justify-content: flex-start;
+  width: auto;
+}
+
+/* Legacy standalone artist/album styles retained for compatibility */
+.artist {
+  font-size: 1rem;
+  color: var(--player-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2rem;
+  margin-bottom: 0.45rem;
+  width: 100%;
+}
+
+/* Progress row */
+.progress-section {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Progress track */
+.progress-bar-bg {
+  flex: 1;
+  height: 0.7rem;
+  right: 2rem;
+  left: 0.2rem;
+  position: relative;
+  overflow: visible;
+}
+
+/*
+ * Width is driven by the renderer's requestAnimationFrame smoothing.
+ * Do not add a CSS width transition here: that would apply a second,
+ * independent smoothing layer and make the thumb lag behind the logical playhead.
+ */
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background-color: transparent;
+  position: relative;
+  transition: none;
+  will-change: width;
+}
+
+/* Progress thumb */
+.progress-thumb {
+  position: absolute;
+  top: 40%;
+  left: 100%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 23px;
+  background-color: var(--player-thumb-bg);
+  border: 1px solid var(--player-thumb-border);
+  box-shadow: 0 1px 3px var(--player-thumb-shadow);
+}
+
+.progress-thumb[hidden] {
+  display: none;
+}
+
+/* Percentage badge */
+.percent-badge {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--player-percent-bg);
+  color: var(--player-text-primary);
+  border: 1.5px solid var(--player-border);
+  padding: 0.1rem 0.4rem;
+  min-width: 3.6rem;
+  height: 1.85rem;
+  flex-shrink: 0;
+  box-shadow: 1px 1px 0px var(--player-badge-shadow);
+}
+
+/* Invisible spacer balances the right-side percentage badge */
+.percent-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 1.2rem;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: bold;
+  visibility: hidden;
+}
+
+/* Percentage text */
+.time-text {
+  font-size: 1rem;
+  font-weight: normal;
+  color: var(--player-text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1;
+}
+
+/* Optional standalone album metadata style */
+.album-info {
+  font-size: 0.85rem;
+  color: var(--player-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2rem;
+  margin-bottom: 0.45rem;
+  width: 100%;
+}
+
+/* Artist + album combined scrolling */
+.artist-album-container {
+  font-size: 1rem;
+  color: var(--player-text-secondary);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 0.45rem;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.artist-album-container.is-scrolling {
+  mask-image: linear-gradient(90deg, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.artist-album-scroller {
+  display: inline-flex;
+  white-space: nowrap;
+  justify-content: center;
+  width: 100%;
+}
+
+.artist-album-scroller span {
+  padding-right: 2rem;
+}
+
+.artist-album-scroller.animate {
+  justify-content: flex-start;
+  width: auto;
+}

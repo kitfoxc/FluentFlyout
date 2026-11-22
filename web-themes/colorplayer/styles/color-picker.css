@@ -1,0 +1,46 @@
+.picker { position: absolute; inset: 0; --hue-color: #48ff00; }
+#swatch {
+  position: absolute; left: 16px; top: 21px; width: 50px; height: 50px;
+  border: 1px solid var(--swatch-line); box-shadow: inset 0 0 0 1px white;
+}
+.brightness-label {
+  position: absolute; left: 97px; top: 78px; line-height: 22px;
+  font: 18px/22px "Times New Roman", serif; color: var(--text);
+}
+.brightness-track { border: 1px solid var(--line); background: linear-gradient(to right, black, var(--hue-color)); }
+#brightness { position: absolute; inset: -4px 0; margin: 0; width: 100%; height: 20px; opacity: 0; cursor: pointer; touch-action: none; }
+.brightness-track:focus-within { outline: 1px dotted var(--text); }
+.wheel { position: absolute; left: 50px; top: 104px; width: 290px; height: 290px; }
+#ring, .inner-mask {
+  position: absolute; border-radius: 50%; border: 2px solid var(--line);
+}
+#ring {
+  inset: 0; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+  cursor: crosshair; touch-action: none;
+}
+.inner-mask { inset: 9%; background: var(--surface); pointer-events: none; }
+.triangle-area { position: absolute; width: 60.62%; height: 70%; top: 15%; left: 29.5%; pointer-events: none; }
+#triangle {
+  position: absolute; inset: 0; clip-path: polygon(0 0, 100% 50%, 0 100%);
+  background-image: linear-gradient(to top, black, transparent), linear-gradient(to right, white, var(--hue-color));
+  background-blend-mode: multiply; cursor: crosshair; pointer-events: auto; touch-action: none;
+}
+.outline { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.outline polygon { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-linejoin: round; }
+.selector {
+  width: 16px; height: 16px; border: 2px solid white; border-radius: 50%;
+  position: absolute; transform: translate(-50%, -50%); box-shadow: 0 0 3px #000c; pointer-events: none;
+}
+.ring-selector { left: 95%; top: 50%; }
+.add-icon {
+  position: absolute; right: 14px; bottom: 5px; width: 28px; height: 28px;
+  display: grid; place-items: center; padding: 0; border: 0;
+  color: var(--icon); background: transparent; cursor: pointer;
+}
+.add-icon svg { width: 16px; height: 16px; }
+#settings-panel {
+  position: absolute; z-index: 1; right: 18px; bottom: 36px;
+  padding: 12px; font-size: 14px; color: var(--text); background: var(--badge);
+  border: 1px solid var(--line); box-shadow: 0 2px 8px #0003;
+}
+#settings-panel label { display: flex; align-items: center; gap: 6px; cursor: pointer; }

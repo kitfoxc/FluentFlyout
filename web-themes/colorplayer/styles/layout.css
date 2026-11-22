@@ -1,0 +1,43 @@
+/* Coordinates use the reference image's logical pixels. The whole stage scales once. */
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+.stage {
+  width: 393px;
+  height: 415px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(var(--scale, 1));
+  background: var(--surface);
+  overflow: hidden;
+  user-select: none;
+  font-family: "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+}
+:root {
+  color-scheme: light;
+  --surface: #f1f1f1;
+  --text: #333;
+  --secondary: #727272;
+  --line: #ccc;
+  --badge: white;
+  --thumb: white;
+  --thumb-line: #a2a2a2;
+  --cover-line: #424242;
+  --swatch-line: #333;
+  --icon: #7a7a7a;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #323232;
+  --text: #eee;
+  --secondary: #b8b8b8;
+  --line: #555;
+  --badge: #292929;
+  --thumb: #d6d6d6;
+  --thumb-line: #888;
+  --cover-line: #777;
+  --swatch-line: #777;
+  --icon: #b0b0b0;
+}
+/* The picker paints this track. The player overlays its read-only playhead. */
+.track-position { position: absolute; left: 121px; top: 83px; width: 192px; height: 12px; }
