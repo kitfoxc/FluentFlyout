@@ -152,7 +152,7 @@ FluentFlyout creates the user theme directory on first launch:
 `%APPDATA%\\FluentFlyout\\web-theme`
 
 On first initialization, the bundled renderer template is extracted into
-`web-theme/default` as `index.html`, `css/fluent.css`, `js/app.js`, and
+`web-theme/fluent` as `index.html`, `css/fluent.css`, `js/app.js`, and
 `js/progress-utils.js`. All four files are then served directly from that
 writable directory. Edit any of these files and manually refresh the OBS Browser
 Source to see the changes; no application rebuild is needed. No automatic file

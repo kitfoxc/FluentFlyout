@@ -875,7 +875,7 @@ public partial class UserSettings : ObservableObject
         ObsNowPlayingPreferenceConfigured = false;
         ObsNowPlayingPort = 17832;
         ObsPinnedSessionId = string.Empty;
-        WebSocketThemeFileName = "default";
+        WebSocketThemeFileName = "fluent";
         AllowedApps = [];
         BlockedApps = [];
 
@@ -965,14 +965,15 @@ public partial class UserSettings : ObservableObject
 
         ObsPinnedSessionId = ObsPinnedSessionId?.Trim() ?? string.Empty;
 
-        if (string.Equals(WebSocketThemeFileName, "default.html", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(WebSocketThemeFileName?.Trim(), "default", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(WebSocketThemeFileName, "default.html", StringComparison.OrdinalIgnoreCase))
         {
-            WebSocketThemeFileName = "default";
+            WebSocketThemeFileName = "fluent";
         }
         else if (!IsValidThemeFolderName(WebSocketThemeFileName))
         {
             Logger.Warn("Invalid OBS theme folder setting; using the default theme");
-            WebSocketThemeFileName = "default";
+            WebSocketThemeFileName = "fluent";
         }
         else
         {

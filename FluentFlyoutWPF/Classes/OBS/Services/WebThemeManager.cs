@@ -13,7 +13,7 @@ namespace FluentFlyoutWPF.Classes.OBS.Services;
 public sealed class WebThemeManager
 {
     // Optional fixture source for tests. Production defaults are embedded at build time
-    // and expanded once into the user's writable web-theme/default directory.
+    // and expanded once into the user's writable web-theme/fluent directory.
     private readonly string? _sourceWebRoot;
 
     private static readonly (string FilePath, string ResourceName)[] DefaultRendererFiles =
@@ -39,7 +39,7 @@ public sealed class WebThemeManager
 
     public string ThemeDirectory { get; }
 
-    public string DefaultThemeFolderName => "default";
+    public string DefaultThemeFolderName => "fluent";
 
     /// <summary>Returns only immediate, ordinary theme directories.</summary>
     public IReadOnlyList<string> GetAvailableThemes()
