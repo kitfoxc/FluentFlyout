@@ -26,7 +26,7 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
       - name: Test Browser progress helpers
-        run: node --test FluentFlyoutWPF/Web/js/progress-utils.test.mjs FluentFlyoutWPF.Tests/renderer-lifecycle.test.mjs
+        run: node --test FluentFlyoutWPF/Web/js/progress-utils.test.mjs FluentFlyoutWPF.Tests/renderer-lifecycle.test.mjs FluentFlyoutWPF.Tests/colorplayer-progress.test.mjs
       - name: Check renderer and browser API syntax
         shell: pwsh
         run: |

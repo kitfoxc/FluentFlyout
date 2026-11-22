@@ -294,10 +294,18 @@ function trackKey(media) {
   ].join("\u001f");
 }
 
+// A new title can arrive before its first SMTC timeline sample.
+let awaitingTrackTimeline = false;
+let trackTimelineWaitStarted = 0;
+
 function logicalPosition(now = performance.now()) {
   const advancing = !awaitingFreshSnapshot && mode === MODE.RUNNING &&
     mediaState?.playbackStatus === "Playing";
-  const elapsed = advancing ? Math.max(0, now - logicalAnchorAt) / 1000 : 0;
+  // With a silent source, resume local estimation from zero after the startup guard.
+  const anchorAt = awaitingTrackTimeline
+    ? Math.max(logicalAnchorAt, trackTimelineWaitStarted + CONFIG.startupGuardMaxMs)
+    : logicalAnchorAt;
+  const elapsed = advancing ? Math.max(0, now - anchorAt) / 1000 : 0;
   return clampToDuration(logicalAnchor + elapsed);
 }
 
@@ -660,7 +668,11 @@ function handlePlaying(media, changedTrack, previousTrackPercent, resync, resume
   const reported = getReportedPosition(media, resumed ? visualPosition : 0);
   wakeRenderer();
 
-  if (resumed) {
+  if (awaitingTrackTimeline) {
+    startupGuard.cancel();
+    setStartupGuardState(false);
+    setAnchor(0, now, true);
+  } else if (resumed) {
     // A Playing snapshot may still carry the SMTC timestamp from before pause.
     resumedAt = parseAnchorTimestamp(media.updatedAt, wallNow) ?? wallNow;
     trackResetTransition = null;
@@ -672,7 +684,9 @@ function handlePlaying(media, changedTrack, previousTrackPercent, resync, resume
       (parseAnchorTimestamp(media.timelineLastUpdatedTime, wallNow) ?? -Infinity) < resumedAt;
     setAnchor(timelineIsStale ? reported : getTimelinePosition(media, wallNow), now, true);
     if (!timelineIsStale) beginStartupGuard(media, now);
+  }
 
+  if (resetForNewPlayback && !resumed) {
     // On a real track change, animate the old track's percentage back to zero.
     // Keep the new track's logical anchor intact while only the visual fill resets.
     if (
@@ -690,7 +704,7 @@ function handlePlaying(media, changedTrack, previousTrackPercent, resync, resume
     } else {
       trackResetTransition = null;
     }
-  } else {
+  } else if (!resumed && !awaitingTrackTimeline) {
     trackResetTransition = null;
     startupGuard.cancel();
     setStartupGuardState(false);
@@ -791,6 +805,7 @@ function renderMedia(media) {
   awaitingFreshSnapshot = false;
 
   if (!media) {
+    awaitingTrackTimeline = false;
     pauseDeadline = null;
     mediaState = null;
     resumedAt = null;
@@ -808,7 +823,26 @@ function renderMedia(media) {
   const previousTrackPercent = displayedPercent;
   const previousVisualTarget = progressPercent(visualPosition);
 
-  const previousStatus = mediaState?.playbackStatus;
+  const previous = mediaState;
+  const previousStatus = previous?.playbackStatus;
+  const sameSession = previous?.isAvailable && previous.sessionId === media.sessionId;
+  const newTitle = sameSession && previous.title && media.title && previous.title !== media.title;
+  const reported = getReportedPosition(media);
+  const timestamp = parseAnchorTimestamp(media.timelineLastUpdatedTime, Date.now());
+  const previousTimestamp = parseAnchorTimestamp(previous?.timelineLastUpdatedTime, Date.now());
+  const repeatedPosition = sameSession && reported === getReportedPosition(previous);
+  if (!media.isAvailable || !sameSession || !["Playing", "Paused"].includes(media.playbackStatus)) {
+    awaitingTrackTimeline = false;
+  } else if (newTitle) {
+    // Some players refresh the timestamp while still reporting the old position.
+    awaitingTrackTimeline = reported > 0 && (repeatedPosition ||
+      (timestamp !== null && previousTimestamp !== null && timestamp <= previousTimestamp));
+    trackTimelineWaitStarted = performance.now();
+  } else if (!repeatedPosition) {
+    awaitingTrackTimeline = false;
+  }
+  const resumedSession = sameSession && previousStatus === "Paused";
+
   mediaState = media;
 
   if (!media.isAvailable || media.playbackStatus !== "Paused") {
@@ -826,7 +860,17 @@ function renderMedia(media) {
   const key = incomingTrackKey;
   const changedTrack = key !== currentTrackKey;
   const status = media.playbackStatus;
-  if (changedTrack || !media.isAvailable || status !== "Playing") resumedAt = null;
+  if (!sameSession || newTitle || !media.isAvailable || status !== "Playing") resumedAt = null;
+  if (newTitle || (resumedSession && status === "Playing")) {
+    resumedAt = parseAnchorTimestamp(media.updatedAt, Date.now()) ?? Date.now();
+  }
+
+  // A fresh page may never have observed the pause. A stale timestamp that
+  // alone would exhaust the track is insufficient evidence of completion.
+  if (!previous?.isAvailable && status === "Playing" && reported < media.duration &&
+      getTimelinePosition(media) >= media.duration) {
+    resumedAt = Date.now();
+  }
 
   if (!media.isAvailable) {
     currentTrackKey = key;
@@ -851,7 +895,7 @@ function renderMedia(media) {
       lastReportedPosition = null;
       setAnchor(getReportedPosition(media), performance.now(), true);
     }
-    handlePaused(media);
+    handlePaused(awaitingTrackTimeline ? { ...media, position: 0 } : media);
     return;
   }
 
@@ -869,7 +913,7 @@ function renderMedia(media) {
       changedTrack,
       !resync && changedTrackBeforeUpdate ? previousTrackPercent : null,
       resync,
-      !changedTrack && previousStatus === "Paused"
+      resumedSession && !newTitle
     );
     return;
   }
@@ -880,7 +924,7 @@ function renderMedia(media) {
   } else if (!trackResetTransition && progressPercent(visualPosition) !== previousVisualTarget) {
     transitionProgress(visualPosition);
   }
-  handlePlayingUpdate(media);
+  if (!awaitingTrackTimeline) handlePlayingUpdate(media);
 }
 
 // ---- Animation frame loop ----
