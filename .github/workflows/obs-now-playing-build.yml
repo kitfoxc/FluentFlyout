@@ -7,6 +7,7 @@ on:
       - fix/tray-exit-dashboard-layout
       - refactor/obs-progress-rendering-m5
       - fix/obs-visual-progress-stability
+      - feature/shared-audio-bpm
   pull_request:
     branches:
       - master

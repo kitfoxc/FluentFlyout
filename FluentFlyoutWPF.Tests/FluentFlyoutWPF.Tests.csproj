@@ -30,4 +30,8 @@
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Server\WebSocketHub.cs" Link="OBS\Server\WebSocketHub.cs" />
     <Compile Include="..\FluentFlyoutWPF\Classes\OBS\Services\WebThemeManager.cs" Link="OBS\Services\WebThemeManager.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../FluentFlyoutWPF/Classes/Audio/TempoEstimator.cs" Link="Audio/TempoEstimator.cs" />
+    <Compile Include="../FluentFlyoutWPF/Classes/Audio/PcmFrames.cs" Link="Audio/PcmFrames.cs" />
+  </ItemGroup>
 </Project>

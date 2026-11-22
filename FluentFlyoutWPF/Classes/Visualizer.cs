@@ -4,6 +4,7 @@
 using FluentFlyout.Classes.Settings;
 using FluentFlyout.Classes.Utils;
 using Microsoft.Win32;
+using FluentFlyoutWPF.Classes.Audio;
 using NAudio.CoreAudioApi;
 using NAudio.Dsp;
 using NAudio.Wave;
@@ -26,7 +27,7 @@ namespace FluentFlyoutWPF.Classes
         private readonly int ImageHeight = 32 * Supersample;
         private readonly int BarSpacing = 2 * Supersample;
 
-        private WasapiLoopbackCapture? _capture;
+        private SharedLoopbackInput? _capture;
         private MMDevice? _renderDevice;
         private static float[]? _barValues;
         private WriteableBitmap? _bitmap;
@@ -224,7 +225,7 @@ namespace FluentFlyoutWPF.Classes
                     return;
                 }
 
-                _capture = new WasapiLoopbackCapture(_renderDevice);
+                _capture = new SharedLoopbackInput(_renderDevice);
                 _capture.DataAvailable += OnDataAvailable;
                 _capture.RecordingStopped += OnRecordingStopped;
                 _capture.StartRecording();
@@ -293,8 +294,10 @@ namespace FluentFlyoutWPF.Classes
 
             _lastDataAvailableUtc = DateTime.UtcNow;
 
-            _captureWatchdog.Stop();
-            _captureWatchdog.Start();
+            var watchdog = _captureWatchdog;
+            if (watchdog == null || sender != _capture) return;
+            watchdog.Stop();
+            watchdog.Start();
 
             int bytesPerSample = _capture!.WaveFormat.BitsPerSample / 8;
             int samplesRecorded = e.BytesRecorded / bytesPerSample;

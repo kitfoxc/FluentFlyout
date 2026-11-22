@@ -37,3 +37,9 @@
 - [ ] 完成 Windows CI、协议文档更新及外置主题包实机验证。交付时记录测得的首次稳定时间、误差、性能开销和已知限制。用户可分别关闭网页调速或应用端分析。
 
 阶段一和阶段二可分别验证；阶段三在两者通过后联调，阶段四通过后发布。
+
+## 阶段二实现记录
+
+分支 `feature/shared-audio-bpm`。后台消费者可按需创建 `BpmCaptureSession`，读取可空的 `Current`（BPM、置信度），结束时等待 `DisposeAsync()`。任务栏频谱与分析器按设备 ID 共享 WASAPI 捕获，任务栏继续自行管理绘制和启停。阶段三负责从 WebSocket 服务创建该会话。
+
+自动化用例位于 `FluentFlyoutWPF.Tests/TempoEstimatorTests.cs`。待实机记录真实音乐的首次稳定时间、半速或倍速误判，以及两种消费者交错启停、设备切换和休眠恢复的表现。
