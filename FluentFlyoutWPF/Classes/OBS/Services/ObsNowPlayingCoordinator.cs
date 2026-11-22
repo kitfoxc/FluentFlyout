@@ -399,20 +399,21 @@ public sealed class ObsNowPlayingCoordinator
         if (properties is null)
         {
             var current = _mediaStateStore.Current;
-            if (!current.IsAvailable ||
-                !string.Equals(current.SessionId, session.Id, StringComparison.Ordinal))
+            var baseline = current.IsAvailable &&
+                string.Equals(current.SessionId, session.Id, StringComparison.Ordinal)
+                ? current
+                : NowPlayingInfo.Empty;
+
+            _mediaStateStore.Publish(baseline with
             {
-                _mediaStateStore.Publish(new NowPlayingInfo
-                {
-                    SessionId = session.Id,
-                    PlayerName = playerName,
-                    PlaybackStatus = ToObsPlaybackStatus(playback?.PlaybackStatus),
-                    Position = Math.Max(0, timeline.Position.TotalSeconds),
-                    Duration = duration,
-                    TimelineLastUpdatedTime = timeline.LastUpdatedTime,
-                    IsAvailable = true
-                });
-            }
+                SessionId = session.Id,
+                PlayerName = playerName,
+                PlaybackStatus = playback is null ? baseline.PlaybackStatus : ToObsPlaybackStatus(playback.PlaybackStatus),
+                Position = Math.Max(0, timeline.Position.TotalSeconds),
+                Duration = duration,
+                TimelineLastUpdatedTime = timeline.LastUpdatedTime,
+                IsAvailable = true
+            });
 
             return;
         }

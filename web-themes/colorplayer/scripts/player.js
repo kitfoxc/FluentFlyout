@@ -240,6 +240,7 @@ let mode = MODE.EFFICIENCY;
 let sleepReason = "等待媒体快照";
 let animationFrame = 0;
 let pauseTimer = 0;
+let pauseDeadline = null;
 let disconnected = false;
 let awaitingFreshSnapshot = false;
 
@@ -598,13 +599,11 @@ function wakeRenderer() {
 }
 
 function schedulePausedSleep() {
-  clearPauseTimer();
+  if (pauseTimer || pauseDeadline === null) return;
   pauseTimer = window.setTimeout(() => {
     pauseTimer = 0;
-    if (mediaState?.playbackStatus === "Paused") {
-      enterEfficiencyMode("暂停超过 5 分钟");
-    }
-  }, CONFIG.pauseSleepMs);
+    if (mediaState?.playbackStatus === "Paused") enterEfficiencyMode("暂停超过 5 分钟");
+  }, Math.max(0, pauseDeadline - Date.now()));
 }
 
 function renderUnavailableState() {
@@ -615,7 +614,6 @@ function renderUnavailableState() {
 
 function handlePaused(media) {
   trackResetTransition = null;
-  clearPauseTimer();
   mode = MODE.PAUSED;
 
   const now = performance.now();
@@ -793,6 +791,7 @@ function renderMedia(media) {
   awaitingFreshSnapshot = false;
 
   if (!media) {
+    pauseDeadline = null;
     mediaState = null;
     resumedAt = null;
     currentTrackKey = null;
@@ -812,6 +811,15 @@ function renderMedia(media) {
   const previousStatus = mediaState?.playbackStatus;
   mediaState = media;
 
+  if (!media.isAvailable || media.playbackStatus !== "Paused") {
+    pauseDeadline = null;
+  } else if (pauseDeadline === null || incomingTrackKey !== currentTrackKey) {
+    clearPauseTimer();
+    pauseDeadline = Date.now() + CONFIG.pauseSleepMs;
+  } else if (Date.now() >= pauseDeadline) {
+    if (mode !== MODE.EFFICIENCY) enterEfficiencyMode("暂停超过 5 分钟");
+    return;
+  }
   renderMetadata(media);
   setCover(media.isAvailable && media.coverUrl ? media.coverUrl : DEFAULTS.COVER);
 

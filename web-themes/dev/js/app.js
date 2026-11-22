@@ -78,6 +78,7 @@ let mode = MODE.EFFICIENCY;
 let sleepReason = "尚未收到媒体快照";
 let animationFrame = 0;
 let pauseTimer = 0;
+let pauseDeadline = null;
 let currentTrackKey = null;
 let currentCoverUrl = null;
 let pendingCover = null;
@@ -90,6 +91,7 @@ let lastReportedPosition = null;
 let resumedAt = null;
 let lastSnapshotAt = null;
 let connected = false;
+let awaitingSnapshot = false;
 
 function text(node, value) {
   if (node) node.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
@@ -137,7 +139,7 @@ function stopAnimation() {
   text(el.animationState,"已挂起");
 }
 function startAnimation() {
-  if (animationFrame || mode !== MODE.RUNNING || document.hidden) return;
+  if (!connected || awaitingSnapshot || animationFrame || mode !== MODE.RUNNING || document.hidden) return;
   lastFrameAt = performance.now();
   animationFrame = requestAnimationFrame(updateProgress);
   text(el.animationState,"运行中");
@@ -311,12 +313,11 @@ function wake(reason = "正在播放") {
   text(el.sleepReason,reason);
 }
 function schedulePausedSleep() {
-  clearPauseTimer();
+  if (pauseTimer || pauseDeadline === null) return;
   pauseTimer = window.setTimeout(() => {
     pauseTimer = 0;
-    if (mediaState?.playbackStatus === "Paused")
-      setEfficiency("暂停超过 5 分钟");
-  },CONFIG.pauseSleepMs);
+    if (mediaState?.playbackStatus === "Paused") setEfficiency("暂停超过 5 分钟");
+  }, Math.max(0, pauseDeadline - Date.now()));
 }
 function showTempo(value, status) {
   text(document.getElementById("tempo-value"), value);
@@ -333,11 +334,22 @@ function renderTempo(media) {
 }
 
 function render(media) {
+  if (!connected || !media) return;
+  const resync = awaitingSnapshot;
+  awaitingSnapshot = false;
   if (connected) renderTempo(media);
   lastSnapshotAt = Date.now();
-  if (!media) return;
   const previousStatus = mediaState?.playbackStatus;
   mediaState = media;
+  if (!media.isAvailable || media.playbackStatus !== "Paused") {
+    pauseDeadline = null;
+  } else if (pauseDeadline === null || trackKey(media) !== currentTrackKey) {
+    clearPauseTimer();
+    pauseDeadline = Date.now() + CONFIG.pauseSleepMs;
+  } else if (Date.now() >= pauseDeadline) {
+    if (mode !== MODE.EFFICIENCY) setEfficiency("暂停超过 5 分钟");
+    return;
+  }
   renderMetadata(media);
   setCover(media.coverUrl || null);
   const key = trackKey(media);
@@ -362,7 +374,6 @@ function render(media) {
   }
   if (status === "Paused") {
     currentTrackKey = key;
-    clearPauseTimer();
     stopAnimation();
     mode = MODE.PAUSED;
     const now = performance.now();
@@ -386,13 +397,15 @@ function render(media) {
   }
 
   clearPauseTimer();
-  if (changed || mode !== MODE.RUNNING) {
-    const resetForNewPlayback = changed ||
+  if (resync || changed || mode !== MODE.RUNNING) {
+    const resetForNewPlayback = resync || changed ||
       ["无可用媒体会话","播放已停止","媒体会话已关闭"].includes(sleepReason);
     currentTrackKey = key;
     wake();
     const now = performance.now();
-    const resumed = !changed && previousStatus === "Paused";
+    const staleResumeTimeline = resync && resumedAt !== null &&
+        !(Date.parse(media.timelineLastUpdatedTime) >= resumedAt);
+    const resumed = !changed && (previousStatus === "Paused" || staleResumeTimeline);
     const reported = getReportedPosition(media,resumed ? visualPosition : 0);
     if (resumed) {
       // A Playing snapshot may still carry the SMTC timestamp from before pause.
@@ -517,6 +530,11 @@ function onVisibilityChange() {
   }
 }
 function onConnectionChange(value) {
+  if (connected && !value) {
+    awaitingSnapshot = true;
+    stopAnimation();
+    clearPauseTimer();
+  }
   connected = Boolean(value);
   showTempo("—", connected ? "等待媒体快照" : "连接断开");
   el.connectionPill.className = "pill " + (connected ? "pill-online" : "pill-offline");

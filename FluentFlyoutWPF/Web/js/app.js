@@ -81,6 +81,7 @@ let mode = MODE.SLEEP;
 let resumedAt = null;
 let animationFrame = 0;
 let pauseTimer = 0;
+let pauseDeadline = null;
 let currentTrackKey = null;
 let currentCoverUrl = null;
 let pendingCoverImage = null;
@@ -93,6 +94,7 @@ let lastFrameAt = 0;
 let lastTextAt = 0;
 let lastReportedPosition = null;
 let connected = false;
+let awaitingSnapshot = false;
 
 function setText(node, value) {
   if (!node) return;
@@ -153,7 +155,7 @@ function stopAnimation() {
 }
 
 function startAnimation() {
-  if (animationFrame || mode !== MODE.RUNNING || document.hidden) return;
+  if (!connected || awaitingSnapshot || animationFrame || mode !== MODE.RUNNING || document.hidden) return;
   lastFrameAt = performance.now();
   animationFrame = requestAnimationFrame(updateProgress);
 }
@@ -310,13 +312,11 @@ function enterSleep(clearArtwork = false) {
 }
 
 function schedulePausedSleep() {
-  clearPauseTimer();
+  if (pauseTimer || pauseDeadline === null) return;
   pauseTimer = window.setTimeout(() => {
     pauseTimer = 0;
-    if (mediaState?.playbackStatus === "Paused") {
-      enterSleep(true);
-    }
-  }, CONFIG.pauseSleepMs);
+    if (mediaState?.playbackStatus === "Paused") enterSleep(true);
+  }, Math.max(0, pauseDeadline - Date.now()));
 }
 
 function getInitialPosition(media) {
@@ -342,7 +342,6 @@ function percentOf(position) {
 
 function handlePaused(media, changedTrack) {
   stopAnimation();
-  clearPauseTimer();
 
   const now = performance.now();
   const pausedPosition = getReportedPosition(media, changedTrack ? 0 : visualPosition);
@@ -496,10 +495,21 @@ function updateProgress() {
 }
 
 function render(media) {
-  if (!media) return;
+  if (!connected || !media) return;
+  const resync = awaitingSnapshot;
+  awaitingSnapshot = false;
 
   const previousStatus = mediaState?.playbackStatus;
   mediaState = media;
+  if (!media.isAvailable || media.playbackStatus !== "Paused") {
+    pauseDeadline = null;
+  } else if (pauseDeadline === null || getTrackKey(media) !== currentTrackKey) {
+    clearPauseTimer();
+    pauseDeadline = Date.now() + CONFIG.pauseSleepMs;
+  } else if (Date.now() >= pauseDeadline) {
+    if (mode !== MODE.SLEEP) enterSleep(true);
+    return;
+  }
   renderMetadata(media);
   setCover(media.coverUrl || null);
 
@@ -528,8 +538,10 @@ function render(media) {
 
   if (status === "Playing") {
     currentTrackKey = key;
-    if (changedTrack || mode !== MODE.RUNNING) {
-      handlePlaying(media, !changedTrack && previousStatus === "Paused");
+    if (resync || changedTrack || mode !== MODE.RUNNING) {
+      const staleResumeTimeline = resync && resumedAt !== null &&
+        !(Date.parse(media.timelineLastUpdatedTime) >= resumedAt);
+      handlePlaying(media, !changedTrack && (previousStatus === "Paused" || staleResumeTimeline));
     } else {
       handlePlayingUpdate(media);
     }
@@ -541,6 +553,11 @@ function render(media) {
 }
 
 function onConnectionChange(value) {
+  if (connected && !value) {
+    awaitingSnapshot = true;
+    stopAnimation();
+    clearPauseTimer();
+  }
   connected = Boolean(value);
   el.connectionDot.classList.toggle("is-online", connected);
   el.connectionDot.classList.toggle("is-offline", !connected);
@@ -584,8 +601,8 @@ window.addEventListener("pageshow", onPageShow);
 // REQUIRED INTERFACE: these subscriptions are provided by the bundled adapter.
 // Do not replace them with a second WebSocket connection or custom token logic.
 if (window.FluentFlyout?.onMediaChanged) {
-  window.FluentFlyout.onMediaChanged(render);
   window.FluentFlyout.onConnectionChanged?.(onConnectionChange);
+  window.FluentFlyout.onMediaChanged(render);
 } else {
   console.error(
     "FluentFlyout API missing. Keep /js/fluentflyout-api.js before js/app.js."
