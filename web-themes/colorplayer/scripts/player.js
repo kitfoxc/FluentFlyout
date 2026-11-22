@@ -955,8 +955,9 @@ function updateProgress() {
   if (trackResetTransition) {
     const elapsed = Math.max(0, now - trackResetTransition.startedAt);
     const progress = Math.min(1, elapsed / Math.max(1, trackResetTransition.durationMs));
-    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
-    const resetPercent = trackResetTransition.fromPercent * (1 - eased);
+    // Normalize five exponential time constants to reach zero at the deadline.
+    const remaining = Math.expm1(5 * (1 - progress)) / Math.expm1(5);
+    const resetPercent = trackResetTransition.fromPercent * remaining;
 
     if (progress >= 1) {
       trackResetTransition = null;
