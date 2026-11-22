@@ -187,7 +187,7 @@ public sealed class ObsCoreTests
     }
 
     [Fact]
-    public void WebThemeManager_ResolvesLegacyDefaultNamesWithoutListingOrReplacingOldTheme()
+    public void WebThemeManager_SeedsFluentAndKeepsExistingDefaultSelectable()
     {
         var root = Path.Combine(Path.GetTempPath(), "FluentFlyout.Tests", Guid.NewGuid().ToString("N"));
         var themeRoot = Path.Combine(root, "themes");
@@ -201,13 +201,11 @@ public sealed class ObsCoreTests
 
             var manager = new WebThemeManager(themeDirectory: themeRoot);
 
-            Assert.Equal(legacyHtml, File.ReadAllText(Path.Combine(defaultFolder, "index.html")));
-            Assert.Equal(new[] { "fluent" }, manager.GetAvailableThemes().ToArray());
-            Assert.Equal(Path.Combine(themeRoot, "fluent", "index.html"), manager.ResolveThemePath("default"));
-            Assert.Equal(manager.ResolveThemePath("fluent"), manager.ResolveThemePath("default.html"));
-            Assert.True(File.Exists(manager.ResolveThemeAssetPath("css/fluent.css", "fluent")));
-            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/app.js", "fluent")));
-            Assert.True(File.Exists(manager.ResolveThemeAssetPath("js/progress-utils.js", "fluent")));
+            Assert.Equal(new[] { "default", "fluent" }, manager.GetAvailableThemes().ToArray());
+            var existingEntry = Path.Combine(defaultFolder, "index.html");
+            Assert.Equal(existingEntry, manager.ResolveThemePath("default"));
+            Assert.Equal(legacyHtml, File.ReadAllText(existingEntry));
+            Assert.Equal(Path.Combine(themeRoot, "fluent", "index.html"), manager.ResolveThemePath(null));
         }
         finally
         {

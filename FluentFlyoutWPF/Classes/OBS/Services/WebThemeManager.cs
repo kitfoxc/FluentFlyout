@@ -41,10 +41,6 @@ public sealed class WebThemeManager
 
     public const string DefaultThemeFolderName = "fluent";
 
-    internal static bool IsLegacyDefaultTheme(string? name) =>
-        string.Equals(name?.Trim(), "default", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name?.Trim(), "default.html", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>Returns only immediate, ordinary theme directories.</summary>
     public IReadOnlyList<string> GetAvailableThemes()
     {
@@ -53,7 +49,7 @@ public sealed class WebThemeManager
         return Directory.EnumerateDirectories(ThemeDirectory, "*", SearchOption.TopDirectoryOnly)
             .Where(directory => !IsReparsePoint(directory))
             .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrWhiteSpace(name) && !IsLegacyDefaultTheme(name))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
             .Cast<string>()
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -148,9 +144,7 @@ public sealed class WebThemeManager
     {
         EnsureDefaultTheme();
 
-        // Resolve saved names from both generations of the default theme.
-        if (IsLegacyDefaultTheme(folderName) ||
-            string.IsNullOrWhiteSpace(folderName))
+        if (string.IsNullOrWhiteSpace(folderName))
             folderName = DefaultThemeFolderName;
 
         var name = folderName.Trim();

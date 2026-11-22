@@ -193,10 +193,9 @@ The WebSocket page lists only immediate folder names, such as `fluent`,
 Select a folder to apply its theme; connected OBS Browser Sources reload
 automatically. Use **Refresh themes** after adding or removing a theme folder.
 
-Saved selections named `default` or `default.html` now resolve to `fluent`.
-Legacy files remain on disk. The theme picker lists only `fluent` for the
-built-in theme. Existing files in `fluent/` are preserved, and missing built-in
-assets are seeded individually. The absolute compatibility routes
+The package seeds the built-in `fluent/` theme. An existing `default/` folder
+is listed and selected like any other theme. Existing files in `fluent/` are
+preserved, and missing built-in assets are seeded individually. The absolute compatibility routes
 `/css/fluent.css`, `/js/app.js`, and `/js/progress-utils.js` serve the built-in
 theme's assets from `fluent/`.
 

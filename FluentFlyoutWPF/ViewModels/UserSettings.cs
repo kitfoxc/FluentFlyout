@@ -973,11 +973,7 @@ public partial class UserSettings : ObservableObject
 
         ObsPinnedSessionId = ObsPinnedSessionId?.Trim() ?? string.Empty;
 
-        if (WebThemeManager.IsLegacyDefaultTheme(WebSocketThemeFileName))
-        {
-            WebSocketThemeFileName = WebThemeManager.DefaultThemeFolderName;
-        }
-        else if (!IsValidThemeFolderName(WebSocketThemeFileName))
+        if (!IsValidThemeFolderName(WebSocketThemeFileName))
         {
             Logger.Warn("Invalid OBS theme folder setting; using the default theme");
             WebSocketThemeFileName = WebThemeManager.DefaultThemeFolderName;
