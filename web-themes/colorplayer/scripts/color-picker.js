@@ -47,8 +47,24 @@
   const button = document.getElementById("settings-button");
   const panel = document.getElementById("settings-panel");
   const sync = document.getElementById("sync-rotation");
-  const preference = "color-player.sync-rotation";
-  try { sync.checked = localStorage.getItem(preference) === "true"; } catch {}
+  const swap = document.getElementById("swap-cover-swatch");
+  const stage = document.querySelector(".stage");
+
+  function restoreCheckbox(input) {
+    const key = "color-player." + input.id;
+    try { input.checked = localStorage.getItem(key) === "true"; } catch {}
+    input.addEventListener("change", () => {
+      try { localStorage.setItem(key, String(input.checked)); } catch {}
+    });
+  }
+
+  restoreCheckbox(sync);
+  restoreCheckbox(swap);
+  function applyCoverPosition() {
+    stage.classList.toggle("swap-cover-swatch", swap.checked);
+  }
+  applyCoverPosition();
+  swap.addEventListener("change", applyCoverPosition);
   let playing = false;
 
   function showSettings(open) {
@@ -72,10 +88,7 @@
       frame = 0;
     } else start();
   }
-  sync.addEventListener("change", () => {
-    try { localStorage.setItem(preference, String(sync.checked)); } catch {}
-    updateRotation();
-  });
+  sync.addEventListener("change", updateRotation);
   window.addEventListener("color-player-playback", event => {
     playing = event.detail;
     updateRotation();

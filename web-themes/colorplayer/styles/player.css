@@ -1,9 +1,11 @@
 #player { position: absolute; inset: 0; pointer-events: none; color: var(--text); }
 #album-cover {
   position: absolute; left: 35px; top: 38px; width: 54px; height: 53px;
-  object-fit: cover; border: 1px solid var(--cover-line);
+  object-fit: cover; background-color: #282828; border: 1px solid var(--cover-line);
   opacity: 0; transition: opacity .3s ease;
 }
+.stage.swap-cover-swatch #album-cover { left: 16px; top: 21px; }
+.stage.swap-cover-swatch #swatch { left: 35px; top: 38px; }
 #album-cover.loaded { opacity: 1; }
 .metadata { position: absolute; left: 92px; top: 19px; width: 252px; text-align: center; }
 .text-line { overflow: hidden; white-space: nowrap; line-height: 22px; }
