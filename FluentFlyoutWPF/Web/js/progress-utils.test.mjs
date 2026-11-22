@@ -42,12 +42,14 @@ test("a stale timestamp continues extrapolating and is capped at track duration"
 
 test("UpdatedAt is used when the SMTC timestamp is missing or a sentinel", () => {
   const now = Date.parse("2026-11-21T00:00:04.000Z");
-  assert.equal(getTimelinePosition({
+  const media = {
     position: 12,
     duration: 100,
     timelineLastUpdatedTime: "1601-01-01T00:00:00.000Z",
     updatedAt: "2026-11-21T00:00:01.000Z"
-  }, now), 15);
+  };
+  assert.equal(getTimelinePosition(media, now, { allowUpdatedAtFallback: true }), 15);
+  assert.equal(getTimelinePosition(media, now), 12);
 });
 
 test("a timestamp too far in the future falls back to the reported position", () => {
