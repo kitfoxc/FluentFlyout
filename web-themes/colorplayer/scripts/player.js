@@ -44,9 +44,9 @@ const CONFIG = Object.freeze({
 
 const SCROLL_SETTINGS = Object.freeze({
   // Duration of each acceleration and deceleration phase, in milliseconds.
-  scrollRampMs: 180,
-  titleSpeed: 12,
-  artistAlbumSpeed: 12,
+  scrollRampMs: 200,
+  titleSpeed: 24,
+  artistAlbumSpeed: 24,
   // CUSTOMIZABLE: pause after each complete scrolling pass.
   pauseDurationMs: 1200
 });
