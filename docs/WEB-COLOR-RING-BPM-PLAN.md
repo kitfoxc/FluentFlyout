@@ -43,3 +43,7 @@
 分支 `feature/shared-audio-bpm`。后台消费者可按需创建 `BpmCaptureSession`，读取可空的 `Current`（BPM、置信度），结束时等待 `DisposeAsync()`。任务栏频谱与分析器按设备 ID 共享 WASAPI 捕获，任务栏继续自行管理绘制和启停。阶段三负责从 WebSocket 服务创建该会话。
 
 自动化用例位于 `FluentFlyoutWPF.Tests/TempoEstimatorTests.cs`。待实机记录真实音乐的首次稳定时间、半速或倍速误判，以及两种消费者交错启停、设备切换和休眠恢复的表现。
+
+## 阶段三实现记录
+
+WebSocket 快照和增量状态共用可空 bpm。服务以 500 毫秒间隔检查客户端需求与估算结果，对整数 BPM 去重。媒体会话、标题、艺术家、专辑或播放状态变化会清除旧结果。外置 color-player 默认使用自动检测，也可手动模拟；Windows 与 OBS 实机验收留到阶段四。

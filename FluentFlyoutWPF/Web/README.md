@@ -274,3 +274,7 @@ new media can wake the page. A paused track does not run a progress animation.
 The HTML comments mark required DOM/API contracts and customizable regions.
 The CSS comments mark theme tokens. The JavaScript comments distinguish the
 required interface contract from customizable presentation configuration.
+
+### Optional tempo
+
+Both media envelopes include an optional nullable `data.bpm`. A BPM-only update advances the sequence and preserves the timeline anchor. Consumers should clear unavailable estimates on disconnect or track change. Tempo is estimated from the default output mix while a client is connected and the selected session is playing.

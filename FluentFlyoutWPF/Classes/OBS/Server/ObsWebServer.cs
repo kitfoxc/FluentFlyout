@@ -24,6 +24,8 @@ public sealed class ObsWebServer : IAsyncDisposable
 {
     public const int DefaultPort = 17832;
 
+    private CancellationTokenSource? _tempoStop;
+    private Task? _tempoWorker;
     private readonly MediaStateStore _stateStore;
     private readonly CoverArtStore _coverArtStore;
     private readonly WebThemeManager _themeManager;
@@ -217,6 +219,8 @@ public sealed class ObsWebServer : IAsyncDisposable
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
             _app = app;
             _started = true;
+            _tempoStop = new CancellationTokenSource();
+            _tempoWorker = MonitorTempoAsync(_tempoStop.Token);
             NLog.LogManager.GetCurrentClassLogger().Info(
                 "WebSocket server started at {0}", BaseUrl);
         }
@@ -256,6 +260,12 @@ public sealed class ObsWebServer : IAsyncDisposable
         _app = null;
         _started = false;
         _stateStore.Changed -= OnMediaStateChanged;
+
+        _tempoStop?.Cancel();
+        if (_tempoWorker != null) await _tempoWorker.ConfigureAwait(false);
+        _tempoStop?.Dispose();
+        _tempoStop = null;
+        _tempoWorker = null;
 
         CancellationTokenSource? pendingFlush;
         lock (_mediaPushSync)
@@ -304,6 +314,37 @@ public sealed class ObsWebServer : IAsyncDisposable
         return _hub.BroadcastAsync(message);
     }
 
+    private async Task MonitorTempoAsync(CancellationToken token)
+    {
+        FluentFlyoutWPF.Classes.Audio.BpmCaptureSession? session = null;
+        long generation = -1;
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+            {
+                var context = _stateStore.ReadTempoContext();
+                bool active = ConnectedClients > 0 && context.State.IsAvailable &&
+                    context.State.PlaybackStatus == NowPlayingPlaybackStatus.Playing;
+                if (session != null && (!active || generation != context.Generation))
+                {
+                    await session.DisposeAsync().ConfigureAwait(false);
+                    session = null;
+                }
+                generation = context.Generation;
+                if (active) session ??= new FluentFlyoutWPF.Classes.Audio.BpmCaptureSession();
+                var reading = session?.Current;
+                _stateStore.SetTempo(generation, reading.HasValue ? Math.Round(reading.Value.Bpm) : null);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally
+        {
+            if (session != null) await session.DisposeAsync().ConfigureAwait(false);
+            _stateStore.SetTempo(generation, null);
+        }
+    }
+
     private void OnMediaStateChanged(NowPlayingInfo state)
     {
         // Timeline callbacks can arrive in bursts. Keep only the newest state
@@ -312,7 +353,7 @@ public sealed class ObsWebServer : IAsyncDisposable
         CancellationTokenSource? flushCts = null;
         lock (_mediaPushSync)
         {
-            _pendingMediaState = state;
+            _pendingMediaState = _stateStore.Current;
             if (!_mediaPushScheduled)
             {
                 _mediaPushScheduled = true;

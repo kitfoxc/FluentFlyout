@@ -11,6 +11,8 @@ public sealed record NowPlayingInfo
 {
     public long Sequence { get; init; }
 
+    public double? Bpm { get; init; }
+
     public string? SessionId { get; init; }
 
     public string? Title { get; init; }

@@ -16,6 +16,23 @@ public sealed class MediaStateStore
     private NowPlayingInfo _current = NowPlayingInfo.Empty;
     private long _sequence;
 
+    private long _trackGeneration;
+    public (long Generation, NowPlayingInfo State) ReadTempoContext()
+    {
+        lock (_sync) return (_trackGeneration, _current);
+    }
+
+    public void SetTempo(long generation, double? bpm)
+    {
+        NowPlayingInfo published;
+        lock (_sync)
+        {
+            if (generation != _trackGeneration || bpm == _current.Bpm) return;
+            published = _current = _current with { Sequence = ++_sequence, Bpm = bpm };
+        }
+        Notify(Changed, published);
+    }
+
     public event Action<NowPlayingInfo>? Changed;
 
     public NowPlayingInfo Current
@@ -40,8 +57,13 @@ public sealed class MediaStateStore
 
         lock (_sync)
         {
+            bool reset = state.SessionId != _current.SessionId || state.Title != _current.Title ||
+                state.Artist != _current.Artist || state.Album != _current.Album ||
+                state.PlaybackStatus != _current.PlaybackStatus || state.IsAvailable != _current.IsAvailable;
+            if (reset) _trackGeneration++;
             published = state with
             {
+                Bpm = reset ? null : _current.Bpm,
                 Sequence = ++_sequence,
                 UpdatedAt = DateTimeOffset.UtcNow
             };
@@ -50,6 +72,12 @@ public sealed class MediaStateStore
             handlers = Changed;
         }
 
+        Notify(handlers, published);
+        return published;
+    }
+
+    private static void Notify(Action<NowPlayingInfo>? handlers, NowPlayingInfo published)
+    {
         // Never execute external subscribers while holding the state lock.
         if (handlers is not null)
         {
@@ -66,8 +94,6 @@ public sealed class MediaStateStore
                 }
             }
         }
-
-        return published;
     }
 
     public NowPlayingInfo Clear()
