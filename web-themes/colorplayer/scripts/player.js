@@ -43,6 +43,8 @@ const CONFIG = Object.freeze({
 });
 
 const SCROLL_SETTINGS = Object.freeze({
+  // Duration of each acceleration and deceleration phase, in milliseconds.
+  scrollRampMs: 180,
   titleSpeed: 12,
   artistAlbumSpeed: 12,
   // CUSTOMIZABLE: pause after each complete scrolling pass.
@@ -371,31 +373,27 @@ function startTextScrollAnimation(scroller, firstSpan, speed) {
   const distance = firstSpan.offsetWidth;
   if (!Number.isFinite(distance) || distance <= 0) return null;
 
-  const travelMs = Math.max(1, distance / Math.max(1, speed) * 1000);
-  const pauseMs = Math.max(0, SCROLL_SETTINGS.pauseDurationMs);
-  const cycleMs = travelMs + pauseMs;
-  const travelOffset = travelMs / cycleMs;
+  const cruiseTravelMs = distance / Math.max(1, speed) * 1000;
+  const rampMs = Math.min(Math.max(0, SCROLL_SETTINGS.scrollRampMs), cruiseTravelMs);
+  // Each ramp averages half the cruise speed.
+  const travelMs = cruiseTravelMs + rampMs;
+  const cycleMs = travelMs + Math.max(0, SCROLL_SETTINGS.pauseDurationMs);
+  const rampPercent = 25 * rampMs / cruiseTravelMs;
+  const frames = [{ transform: "translateX(0)", offset: 0 }];
 
-  return scroller.animate(
-    [
-      {
-        transform: "translateX(0)",
-        // Ease in at the start, then ease out smoothly before the pause.
-        easing: "cubic-bezier(0.42, 0, 0.58, 1)"
-      },
-      {
-        transform: "translateX(-50%)",
-        offset: travelOffset,
-        easing: "linear"
-      },
-      { transform: "translateX(-50%)", offset: 1 }
-    ],
-    {
-      duration: cycleMs,
-      iterations: Infinity,
-      easing: "linear"
+  if (rampMs > 0) {
+    // Equally spaced Bezier x controls give quadratic acceleration/deceleration.
+    frames[0].easing = "cubic-bezier(.333333, 0, .666667, .333333)";
+    frames.push({ transform: `translateX(-${rampPercent}%)`, offset: rampMs / cycleMs });
+    if (cruiseTravelMs > rampMs) {
+      frames.push({ transform: `translateX(-${50 - rampPercent}%)`, offset: cruiseTravelMs / cycleMs });
     }
-  );
+    frames[frames.length - 1].easing = "cubic-bezier(.333333, .666667, .666667, 1)";
+  }
+
+  frames.push({ transform: "translateX(-50%)", offset: travelMs / cycleMs });
+  if (cycleMs > travelMs) frames.push({ transform: "translateX(-50%)", offset: 1 });
+  return scroller.animate(frames, { duration: cycleMs, iterations: Infinity, easing: "linear" });
 }
 
 function checkTitleScroll(force = false) {
