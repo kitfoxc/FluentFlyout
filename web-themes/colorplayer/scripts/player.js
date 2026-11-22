@@ -151,6 +151,7 @@ function createStartupProgressGuard({
   let active = false;
   let startedAt = 0;
   let lastReportedPosition = null;
+let resumedAt = null;
   let advancingSamples = 0;
 
   const finitePosition = value => {
@@ -261,6 +262,7 @@ let trackResetTransition = null;
 let lastFrameAt = 0;
 let lastTextAt = 0;
 let lastReportedPosition = null;
+let resumedAt = null;
 
 // ---- Basic utilities ----
 function setText(node, value) {
@@ -617,10 +619,7 @@ function handlePaused(media) {
   mode = MODE.PAUSED;
 
   const now = performance.now();
-  const reportedPosition = getReportedPosition(media);
-  const pausedPosition = startupGuard.isActive
-    ? Math.max(visualPosition, getTimelinePosition(media, Date.now()))
-    : getReportedPosition(media, logicalPosition(now));
+  const reportedPosition = getReportedPosition(media, logicalPosition(now));
 
   const pausedSeekDetected =
     lastReportedPosition !== null &&
@@ -636,7 +635,7 @@ function handlePaused(media) {
 
   // Preserve an in-flight paused seek across ordinary state snapshots.
   // Otherwise the next non-seek snapshot could snap the thumb to its target.
-  setAnchor(pausedPosition, now, !continuePausedSeekSmoothing);
+  setAnchor(reportedPosition, now, !continuePausedSeekSmoothing);
   seekSmoothingActive = continuePausedSeekSmoothing;
   lastReportedPosition = reportedPosition;
   transitionProgress(visualPosition);
@@ -648,7 +647,7 @@ function handlePaused(media) {
   schedulePausedSleep();
 }
 
-function handlePlaying(media, changedTrack, previousTrackPercent, resync) {
+function handlePlaying(media, changedTrack, previousTrackPercent, resync, resumed) {
   clearPauseTimer();
   seekSmoothingActive = false;
 
@@ -659,13 +658,22 @@ function handlePlaying(media, changedTrack, previousTrackPercent, resync) {
   ].includes(sleepReason);
 
   const now = performance.now();
-  const initial = getTimelinePosition(media, Date.now());
-  const reported = getReportedPosition(media);
+  const wallNow = Date.now();
+  const reported = getReportedPosition(media, resumed ? visualPosition : 0);
   wakeRenderer();
 
-  if (resetForNewPlayback) {
-    setAnchor(initial, now, true);
-    beginStartupGuard(media, now);
+  if (resumed) {
+    // A Playing snapshot may still carry the SMTC timestamp from before pause.
+    resumedAt = parseAnchorTimestamp(media.updatedAt, wallNow) ?? wallNow;
+    trackResetTransition = null;
+    startupGuard.cancel();
+    setStartupGuardState(false);
+    setAnchor(reported, now, true);
+  } else if (resetForNewPlayback) {
+    const timelineIsStale = resumedAt !== null &&
+      (parseAnchorTimestamp(media.timelineLastUpdatedTime, wallNow) ?? -Infinity) < resumedAt;
+    setAnchor(timelineIsStale ? reported : getTimelinePosition(media, wallNow), now, true);
+    if (!timelineIsStale) beginStartupGuard(media, now);
 
     // On a real track change, animate the old track's percentage back to zero.
     // Keep the new track's logical anchor intact while only the visual fill resets.
@@ -688,7 +696,7 @@ function handlePlaying(media, changedTrack, previousTrackPercent, resync) {
     trackResetTransition = null;
     startupGuard.cancel();
     setStartupGuardState(false);
-    setAnchor(Math.max(initial, visualPosition), now, false);
+    setAnchor(Math.max(getTimelinePosition(media, wallNow), visualPosition), now, false);
   }
 
   lastReportedPosition = reported;
@@ -702,11 +710,12 @@ function handlePlaying(media, changedTrack, previousTrackPercent, resync) {
 
 function handlePlayingUpdate(media) {
   const now = performance.now();
-  const reported = getReportedPosition(media);
+  const reported = getReportedPosition(media, resumedAt === null ? 0 : lastReportedPosition);
   const current = logicalPosition(now);
   const wallNow = Date.now();
-  const timelineValid = hasValidTimelineTimestamp(media, wallNow);
-  const incoming = getTimelinePosition(media, wallNow);
+  const timestamp = parseAnchorTimestamp(media.timelineLastUpdatedTime, wallNow);
+  const timelineValid = timestamp !== null && (resumedAt === null || timestamp >= resumedAt);
+  const incoming = timelineValid ? getTimelinePosition(media, wallNow) : reported;
 
   const backwardSeek = lastReportedPosition !== null &&
     reported < lastReportedPosition - CONFIG.backwardSeekThresholdSeconds;
@@ -785,6 +794,7 @@ function renderMedia(media) {
 
   if (!media) {
     mediaState = null;
+    resumedAt = null;
     currentTrackKey = null;
     lastReportedPosition = null;
     setAnchor(0, performance.now(), true);
@@ -799,6 +809,7 @@ function renderMedia(media) {
   const previousTrackPercent = displayedPercent;
   const previousVisualTarget = progressPercent(visualPosition);
 
+  const previousStatus = mediaState?.playbackStatus;
   mediaState = media;
 
   renderMetadata(media);
@@ -807,6 +818,7 @@ function renderMedia(media) {
   const key = incomingTrackKey;
   const changedTrack = key !== currentTrackKey;
   const status = media.playbackStatus;
+  if (changedTrack || !media.isAvailable || status !== "Playing") resumedAt = null;
 
   if (!media.isAvailable) {
     currentTrackKey = key;
@@ -848,7 +860,8 @@ function renderMedia(media) {
       media,
       changedTrack,
       !resync && changedTrackBeforeUpdate ? previousTrackPercent : null,
-      resync
+      resync,
+      !changedTrack && previousStatus === "Paused"
     );
     return;
   }

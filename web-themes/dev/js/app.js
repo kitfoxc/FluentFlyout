@@ -87,6 +87,7 @@ let visualPosition = 0;
 let lastFrameAt = 0;
 let lastTextAt = 0;
 let lastReportedPosition = null;
+let resumedAt = null;
 let lastSnapshotAt = null;
 let connected = false;
 
@@ -335,12 +336,14 @@ function render(media) {
   if (connected) renderTempo(media);
   lastSnapshotAt = Date.now();
   if (!media) return;
+  const previousStatus = mediaState?.playbackStatus;
   mediaState = media;
   renderMetadata(media);
   setCover(media.coverUrl || null);
   const key = trackKey(media);
   const changed = key !== currentTrackKey;
   const status = media.playbackStatus;
+  if (changed || !media.isAvailable || status !== "Playing") resumedAt = null;
   text(el.playbackLabel,status === "Playing" ? "正在播放" : status === "Paused" ? "已暂停" : status || "未知状态");
   el.playbackPill.className = "pill " + (status === "Playing" ? "pill-live" : status === "Paused" ? "pill-paused" : "pill-muted");
 
@@ -363,14 +366,11 @@ function render(media) {
     stopAnimation();
     mode = MODE.PAUSED;
     const now = performance.now();
-    const wasStartupGuardActive = startupGuard.isActive;
-    const pausedPosition = wasStartupGuardActive
-      ? Math.max(visualPosition,getTimelinePosition(media,Date.now()))
-      : getReportedPosition(media,logicalPosition(now));
+    const pausedPosition = getReportedPosition(media, changed ? 0 : visualPosition);
     startupGuard.cancel();
     setStartupGuardUi(false);
     setAnchor(pausedPosition,now,true);
-    lastReportedPosition = getReportedPosition(media);
+    lastReportedPosition = pausedPosition;
     renderProgress(visualPosition,true);
     el.dashboard.classList.remove("is-efficiency");
     text(el.efficiencyValue,"静态暂停");
@@ -392,15 +392,23 @@ function render(media) {
     currentTrackKey = key;
     wake();
     const now = performance.now();
-    const initial = getTimelinePosition(media,Date.now());
-    const reported = getReportedPosition(media);
-    if (resetForNewPlayback) {
+    const resumed = !changed && previousStatus === "Paused";
+    const reported = getReportedPosition(media,resumed ? visualPosition : 0);
+    if (resumed) {
+      // A Playing snapshot may still carry the SMTC timestamp from before pause.
+      const publishedAt = Date.parse(media.updatedAt);
+      resumedAt = Number.isFinite(publishedAt) ? publishedAt : Date.now();
+      startupGuard.cancel();
+      setStartupGuardUi(false);
+      setAnchor(reported,now,true);
+    } else if (resetForNewPlayback) {
+      const initial = getTimelinePosition(media,Date.now());
       setAnchor(initial,now,true);
       beginStartupGuard(media,now);
     } else {
       startupGuard.cancel();
       setStartupGuardUi(false);
-      setAnchor(Math.max(initial,visualPosition),now,false);
+      setAnchor(Math.max(getTimelinePosition(media,Date.now()),visualPosition),now,false);
     }
     lastReportedPosition = reported;
     renderProgress(visualPosition,true);
@@ -409,11 +417,12 @@ function render(media) {
   }
 
   const now = performance.now();
-  const reported = getReportedPosition(media);
+  const reported = getReportedPosition(media, resumedAt === null ? 0 : lastReportedPosition);
   const current = logicalPosition(now);
   const wallNow = Date.now();
-  const timelineValid = hasValidTimelineTimestamp(media,wallNow);
-  const incoming = getTimelinePosition(media,wallNow);
+  const timelineValid = hasValidTimelineTimestamp(media,wallNow) &&
+    (resumedAt === null || Date.parse(media.timelineLastUpdatedTime) >= resumedAt);
+  const incoming = timelineValid ? getTimelinePosition(media,wallNow) : reported;
   const backwardSeek = lastReportedPosition !== null &&
     reported < lastReportedPosition-CONFIG.backwardSeekThresholdSeconds;
   const forwardSeek = incoming-current > CONFIG.forwardSnapThresholdSeconds;
